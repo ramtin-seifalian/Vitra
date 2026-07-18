@@ -5,7 +5,7 @@ import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 // third-party CDN being reachable at runtime. The ~10MB model weights still
 // load lazily from Google's CDN, which is the standard/expected place for
 // them and far too large to vendor into the plugin itself.
-const WASM_BASE = '/mediapipe/wasm';
+const WASM_BASE = `${import.meta.env.BASE_URL}mediapipe/wasm`;
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
