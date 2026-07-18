@@ -4,6 +4,9 @@ import {
   LEFT_EYE_CENTER,
   RIGHT_EYE_CENTER,
   NOSE_BRIDGE,
+  TEMPLE_SIDE,
+  EAR_TOP,
+  TRAGION,
 } from './faceAnchors.js';
 
 // All dimensions in centimeters, in the same real-world scale as
@@ -124,16 +127,23 @@ function buildNosePads(color) {
   return group;
 }
 
+// A real temple arm: leaves the frame hinge, runs straight back along the
+// temple, rests over the top of the ear, then hooks down behind it. Routed
+// through the actual side-of-head anatomy (faceAnchors) so, combined with the
+// face occluder, it reads as wrapping around the head — the near arm passes in
+// front of the ear and the far one is hidden behind it on profile turns.
 function buildTemple(side, color, metalness, roughness) {
-  const hingeX = side * (LENS_CENTER_X + LENS_HALF_WIDTH + RIM_THICKNESS * 0.5);
+  const hingeX = LENS_CENTER_X + LENS_HALF_WIDTH + RIM_THICKNESS * 0.5;
   const points = [
-    new THREE.Vector3(hingeX, LENS_CENTER_Y, LENS_CENTER_Z - 0.1),
-    new THREE.Vector3(hingeX + side * 0.5, LENS_CENTER_Y - 0.1, LENS_CENTER_Z - 3),
-    new THREE.Vector3(hingeX + side * 0.7, LENS_CENTER_Y - 0.6, LENS_CENTER_Z - 6.5),
-    new THREE.Vector3(hingeX + side * 0.7, LENS_CENTER_Y - 1.3, LENS_CENTER_Z - 8.5),
-  ];
+    [hingeX, LENS_CENTER_Y, LENS_CENTER_Z - 0.1], // hinge on the frame
+    [hingeX + 0.6, LENS_CENTER_Y + 0.05, 1.8], // back along the temple
+    [TEMPLE_SIDE[0] + 0.3, TEMPLE_SIDE[1] - 1.0, -0.7], // approaching the ear
+    [EAR_TOP[0] - 0.25, EAR_TOP[1] - 0.2, EAR_TOP[2] + 0.05], // over the ear top
+    [TRAGION[0] - 0.3, TRAGION[1] + 0.05, TRAGION[2] - 0.05], // hook down behind ear
+  ].map(([x, y, z]) => new THREE.Vector3(side * x, y, z));
+
   const curve = new THREE.CatmullRomCurve3(points);
-  const geometry = new THREE.TubeGeometry(curve, 24, 0.13, 8, false);
+  const geometry = new THREE.TubeGeometry(curve, 48, 0.135, 10, false);
   const material = new THREE.MeshPhysicalMaterial({ color, metalness, roughness, clearcoat: 0.3 });
   return new THREE.Mesh(geometry, material);
 }

@@ -30,6 +30,16 @@ export const NOSE_BRIDGE = [0, 2.4733, 5.7886];
 // derive the bridge's downward tilt.
 export const NOSE_BRIDGE_LOW = [0, 1.7284, 6.3168];
 
+// Side-of-head landmarks (right side; the +side temple mirrors these) used to
+// route the temple arms back over the cheekbone and down behind the ear so
+// they read like real glasses rather than stubs floating beside the lenses.
+// Landmark 139 — temple/brow side, where the arm leaves the frame hinge.
+export const TEMPLE_SIDE = [6.85, 3.66, 0.72];
+// Landmark 127 — top of the ear, where a real arm rests.
+export const EAR_TOP = [7.74, 2.36, -2.01];
+// Landmark 234 — tragion (front of the ear canal); the arm hooks down to here.
+export const TRAGION = [7.66, 0.67, -2.44];
+
 // MediaPipe's default virtual camera (face_geometry/env_generator), which
 // FaceLandmarker's facialTransformationMatrix output assumes when unprojecting.
 // Matching this exactly is what keeps head pose -> 3D placement bug-free.
