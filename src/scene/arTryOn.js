@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { createGlasses } from '../glasses/createGlasses.js';
+import { createFaceOccluder } from './faceOccluder.js';
 import { FaceTracker } from '../tracking/faceTracker.js';
 import { SmoothedFaceAnchor } from '../tracking/smoothedFaceAnchor.js';
 import { MEDIAPIPE_CAMERA } from '../glasses/faceAnchors.js';
@@ -86,6 +87,13 @@ export class ArTryOn {
     this.faceAnchor = new SmoothedFaceAnchor();
     this.scene.add(this.faceAnchor.group);
 
+    // Invisible depth-only face mesh: makes the real face hide the parts of the
+    // glasses behind it (nose over far lens, temples behind the head). Parented
+    // straight under the face anchor so it tracks the actual face — the fit
+    // sliders below must move only the glasses, not this.
+    this.occluder = createFaceOccluder();
+    this.faceAnchor.group.add(this.occluder);
+
     // Live fit-calibration offset, adjustable from the UI sliders.
     this.fitOffset = new THREE.Group();
     this.faceAnchor.group.add(this.fitOffset);
@@ -149,6 +157,9 @@ export class ArTryOn {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.tracker.dispose();
+    this.occluder?.geometry.dispose();
+    this.occluder?.material.dispose();
+    this.occluder = null;
     this.renderer?.dispose();
     this.renderer = null;
   }
