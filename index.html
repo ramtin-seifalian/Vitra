@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <title>Vitra — امتحان مجازی عینک</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Vitra</h1>
+        <p class="subtitle">امتحان مجازی عینک با واقعیت افزوده</p>
+      </header>
+
+      <main class="stage">
+        <canvas id="idle-canvas" class="stage-layer"></canvas>
+
+        <div id="ar-layer" class="stage-layer ar-layer" hidden>
+          <video id="ar-video" playsinline autoplay muted></video>
+          <canvas id="ar-canvas"></canvas>
+        </div>
+
+        <div id="status" class="status" hidden></div>
+      </main>
+
+      <div class="style-picker" id="style-picker">
+        <button data-style="round" class="style-btn active">رُند</button>
+        <button data-style="square" class="style-btn">مربعی</button>
+        <button data-style="aviator" class="style-btn">آویاتور</button>
+      </div>
+
+      <div class="controls">
+        <button id="try-on-btn" class="primary-btn">Try On — امتحان کن</button>
+        <button id="exit-ar-btn" class="secondary-btn" hidden>بازگشت</button>
+      </div>
+
+      <details id="fit-panel" class="fit-panel" hidden>
+        <summary>تنظیم دقیق (Fit calibration)</summary>
+        <label>بالا/پایین <input type="range" id="fit-y" min="-1.5" max="1.5" step="0.02" value="0" /></label>
+        <label>جلو/عقب <input type="range" id="fit-z" min="-1.5" max="1.5" step="0.02" value="0" /></label>
+        <label>اندازه <input type="range" id="fit-scale" min="0.8" max="1.2" step="0.01" value="1" /></label>
+      </details>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
