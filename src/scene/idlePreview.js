@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { createGlasses } from '../glasses/createGlasses.js';
+import { getGlasses, disposeGlasses } from '../glasses/loadGlassesModel.js';
+
+const _center = new THREE.Vector3();
+const _sphere = new THREE.Sphere();
 
 /**
  * A rotating hero shot of the default glasses model, shown before the user
@@ -30,8 +33,8 @@ export class IdlePreview {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
-    this.current = createGlasses('round');
-    this.group.add(this.current);
+    this.current = null;
+    this._styleRequest = 0;
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enablePan = false;
@@ -49,13 +52,27 @@ export class IdlePreview {
     this._raf = requestAnimationFrame(this._tick);
   }
 
-  setStyle(style) {
-    this.group.remove(this.current);
-    this.current.traverse((obj) => {
-      obj.geometry?.dispose();
-      obj.material?.dispose();
-    });
-    this.current = createGlasses(style);
+  async setStyle(style) {
+    const request = ++this._styleRequest;
+    const next = await getGlasses(style);
+    if (request !== this._styleRequest) return;
+    if (this.current) {
+      this.group.remove(this.current);
+      disposeGlasses(this.current);
+    }
+    // Glasses are authored in worn position (offset in face space); recentre
+    // them so the hero shot spins about the frame's own centre, and pull the
+    // camera back far enough for the whole pair (temples included — real
+    // models have full-length arms) to stay in frame while auto-rotating.
+    const box = new THREE.Box3().setFromObject(next);
+    box.getCenter(_center);
+    next.position.sub(_center);
+    box.getBoundingSphere(_sphere);
+    // Portrait stages are width-bound: shrink the effective fov by the aspect
+    // ratio so the frame stays fully visible through the auto-rotation.
+    const halfFov = Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(1, this.camera.aspect);
+    this.camera.position.set(0, 0.3, (_sphere.radius / halfFov) * 0.85);
+    this.current = next;
     this.group.add(this.current);
   }
 

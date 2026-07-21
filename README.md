@@ -30,10 +30,26 @@ real time.
 - **Smoothing:** a One Euro Filter (position) + adaptive slerp (rotation)
   removes tracking jitter while staying responsive to real head motion —
   see `src/tracking/oneEuroFilter.js`.
-- **Default model:** the glasses shown are procedurally generated
-  (`src/glasses/createGlasses.js`, styles: round / square / aviator) so
-  phase 1 has zero dependency on external 3D assets. Phase 2 swaps this for
-  real scanned models.
+- **Default model:** a real, e-commerce-grade 3D sunglasses model
+  (`public/models/sunglasses-khronos.glb`, loaded via
+  `src/glasses/loadGlassesModel.js`) with physically based transparent /
+  iridescent lens materials. Three procedurally generated styles
+  (`src/glasses/createGlasses.js`: round / square / aviator) remain as
+  zero-asset alternatives and as the fallback if the model file fails to
+  load. Client-provided scanned models plug into the same registry
+  (`GLASSES_MODELS`).
+- **Occlusion:** an invisible, depth-only render of MediaPipe's canonical
+  face mesh plus an approximate skull dome (`src/scene/faceOccluder.js`)
+  lets the real face hide whatever sits behind it — the nose covers the far
+  lens in profile, and the temple arms disappear behind the head — which is
+  what makes the glasses read as genuinely worn.
+
+### 3D model credits
+
+- "Sunglasses" by Eric Chadwick, © 2024 Darmstadt Graphics Group GmbH,
+  licensed [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/), from
+  [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SunglassesKhronos)
+  (Khronos and 3D Commerce logo marks belong to The Khronos Group).
 
 ## Fit calibration
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { createGlasses } from '../glasses/createGlasses.js';
+import { getGlasses, disposeGlasses } from '../glasses/loadGlassesModel.js';
 import { createFaceOccluder } from './faceOccluder.js';
 import { FaceTracker } from '../tracking/faceTracker.js';
 import { SmoothedFaceAnchor } from '../tracking/smoothedFaceAnchor.js';
@@ -45,7 +45,8 @@ export class ArTryOn {
       },
     });
 
-    this._setupScene(initialStyle);
+    this._setupScene();
+    await this.setStyle(initialStyle);
     this.onStatus?.('صورت خود را مقابل دوربین قرار دهید', false);
     this._noFaceFrames = 0;
     this._raf = requestAnimationFrame(this._tick.bind(this));
@@ -58,7 +59,7 @@ export class ArTryOn {
     });
   }
 
-  _setupScene(initialStyle) {
+  _setupScene() {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvasEl, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -98,21 +99,25 @@ export class ArTryOn {
     this.fitOffset = new THREE.Group();
     this.faceAnchor.group.add(this.fitOffset);
 
-    this.glasses = createGlasses(initialStyle);
-    this.fitOffset.add(this.glasses);
+    this.glasses = null;
+    this._styleRequest = 0;
 
     this._resize();
     window.addEventListener('resize', this._resizeBound ?? (this._resizeBound = this._resize.bind(this)));
   }
 
-  setStyle(style) {
+  async setStyle(style) {
     if (!this.fitOffset) return;
-    this.fitOffset.remove(this.glasses);
-    this.glasses.traverse((obj) => {
-      obj.geometry?.dispose();
-      obj.material?.dispose();
-    });
-    this.glasses = createGlasses(style);
+    // Model styles load async; the token discards stale results if the user
+    // taps another style before this one arrives.
+    const request = ++this._styleRequest;
+    const next = await getGlasses(style);
+    if (request !== this._styleRequest || !this.fitOffset) return;
+    if (this.glasses) {
+      this.fitOffset.remove(this.glasses);
+      disposeGlasses(this.glasses);
+    }
+    this.glasses = next;
     this.fitOffset.add(this.glasses);
   }
 
@@ -157,8 +162,10 @@ export class ArTryOn {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.tracker.dispose();
-    this.occluder?.geometry.dispose();
-    this.occluder?.material.dispose();
+    this.occluder?.traverse((obj) => {
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
     this.occluder = null;
     this.renderer?.dispose();
     this.renderer = null;
