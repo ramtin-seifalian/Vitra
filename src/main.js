@@ -15,11 +15,12 @@ const fitY = document.getElementById('fit-y');
 const fitZ = document.getElementById('fit-z');
 const fitScale = document.getElementById('fit-scale');
 
-let currentStyle = 'round';
+let currentStyle = 'sunglasses';
 let arSession = null;
 let arActive = false;
 
 const idlePreview = new IdlePreview(idleCanvas);
+idlePreview.setStyle(currentStyle);
 
 function showStatus(message, isError = false) {
   if (!message) {
