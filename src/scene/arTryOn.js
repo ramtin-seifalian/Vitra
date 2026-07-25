@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getGlasses, disposeGlasses } from '../glasses/loadGlassesModel.js';
-import { LiveFaceOccluder, createSkullDome } from './faceOccluder.js';
+import { LiveFaceOccluder, createSkullDome, createEarOccluders } from './faceOccluder.js';
 import { FaceTracker } from '../tracking/faceTracker.js';
 import { SmoothedFaceAnchor } from '../tracking/smoothedFaceAnchor.js';
 import { MEDIAPIPE_CAMERA } from '../glasses/faceAnchors.js';
@@ -96,10 +96,14 @@ export class ArTryOn {
     //    positioned in world space each frame, so it lives at the scene root;
     this.faceMesh = new LiveFaceOccluder();
     this.scene.add(this.faceMesh.mesh);
-    // 2. an approximate skull volume behind the face, rigidly tracking the
-    //    head, hiding the far temple arm and the near arm's behind-ear hook.
+    // 2. approximate skull + pinna volumes rigidly tracking the head: the
+    //    dome hides the far temple arm behind the head, the ear pads hide
+    //    each arm's end hook behind the ear while its straight part stays
+    //    visible riding over the ear.
     this.skull = createSkullDome();
     this.faceAnchor.group.add(this.skull);
+    this.ears = createEarOccluders();
+    this.faceAnchor.group.add(this.ears);
 
     // Live fit-calibration offset, adjustable from the UI sliders.
     this.fitOffset = new THREE.Group();
@@ -204,6 +208,11 @@ export class ArTryOn {
     this.skull?.geometry.dispose();
     this.skull?.material.dispose();
     this.skull = null;
+    this.ears?.traverse((obj) => {
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
+    this.ears = null;
     this.renderer?.dispose();
     this.renderer = null;
   }

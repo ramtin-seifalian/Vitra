@@ -22,6 +22,21 @@ const GLASSES_MODELS = {
     // CC-BY 4.0 — Eric Chadwick / Darmstadt Graphics Group GmbH, via
     // KhronosGroup/glTF-Sample-Assets (see README credits).
   },
+  // Second registered model: same CC-BY frame geometry re-materialed as a
+  // matte-black sport pair with dark green non-iridescent lenses, in a
+  // slightly narrower size — exercising exactly the per-model registry path
+  // (own URL/scale/fit/materials) that client-scanned models will use.
+  sport: {
+    url: `${import.meta.env.BASE_URL}models/sunglasses-khronos.glb`,
+    scale: 97,
+    position: [0, -0.75, 5.0],
+    tint: {
+      frame: 0x23262b,
+      frameMetalness: 0.25,
+      frameRoughness: 0.55,
+      lens: 0x14432f,
+    },
+  },
 };
 
 export const MODEL_STYLES = Object.keys(GLASSES_MODELS);
@@ -30,18 +45,36 @@ export function isModelStyle(style) {
   return style in GLASSES_MODELS;
 }
 
+// Per-model material overrides. Clones sharing the cached scene get their own
+// material instances here, so tinting one style never affects another.
+function applyTint(instance, tint) {
+  instance.traverse((obj) => {
+    if (!obj.isMesh || !obj.material) return;
+    const material = obj.material.clone();
+    if (material.name.startsWith('lens')) {
+      material.color.set(tint.lens);
+      if ('iridescence' in material) material.iridescence = 0;
+    } else {
+      material.color.set(tint.frame);
+      if (tint.frameMetalness != null) material.metalness = tint.frameMetalness;
+      if (tint.frameRoughness != null) material.roughness = tint.frameRoughness;
+    }
+    obj.material = material;
+  });
+}
+
 const loader = new GLTFLoader();
-const cache = new Map(); // style -> Promise<THREE.Group> (the raw loaded scene)
+const cache = new Map(); // url -> Promise<THREE.Group> (the raw loaded scene)
 
 function loadRawModel(style) {
-  if (!cache.has(style)) {
-    const { url } = GLASSES_MODELS[style];
+  const { url } = GLASSES_MODELS[style];
+  if (!cache.has(url)) {
     cache.set(
-      style,
+      url,
       loader.loadAsync(url).then((gltf) => gltf.scene)
     );
   }
-  return cache.get(style);
+  return cache.get(url);
 }
 
 /**
@@ -56,12 +89,13 @@ export async function getGlasses(style) {
   if (!isModelStyle(style)) return createGlasses(style);
   try {
     const raw = await loadRawModel(style);
-    const { scale, position } = GLASSES_MODELS[style];
+    const { scale, position, tint } = GLASSES_MODELS[style];
     const group = new THREE.Group();
     group.name = `glasses-${style}`;
     const instance = raw.clone(true);
     instance.scale.setScalar(scale);
     instance.position.fromArray(position);
+    if (tint) applyTint(instance, tint);
     group.add(instance);
     group.userData.style = style;
     group.userData.isModel = true;
