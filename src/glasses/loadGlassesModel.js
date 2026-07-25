@@ -16,7 +16,9 @@ const GLASSES_MODELS = {
   sunglasses: {
     url: `${import.meta.env.BASE_URL}models/sunglasses-khronos.glb`,
     scale: 100,
-    position: [0, -0.15, 5.0],
+    // y tuned down from -0.15 after on-face testing (glasses sat on the
+    // brows); puts the lens centres on the pupil line.
+    position: [0, -0.75, 5.0],
     // CC-BY 4.0 — Eric Chadwick / Darmstadt Graphics Group GmbH, via
     // KhronosGroup/glTF-Sample-Assets (see README credits).
   },

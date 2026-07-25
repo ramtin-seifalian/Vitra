@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { getGlasses, disposeGlasses } from '../glasses/loadGlassesModel.js';
-import { createFaceOccluder } from './faceOccluder.js';
+import { LiveFaceOccluder, createSkullDome } from './faceOccluder.js';
 import { FaceTracker } from '../tracking/faceTracker.js';
 import { SmoothedFaceAnchor } from '../tracking/smoothedFaceAnchor.js';
 import { MEDIAPIPE_CAMERA } from '../glasses/faceAnchors.js';
@@ -34,9 +34,11 @@ export class ArTryOn {
     await this.videoEl.play();
     await this._waitForVideoReady();
 
-    const { width, height } = this.stream.getVideoTracks()[0].getSettings();
-    this.videoW = width || this.videoEl.videoWidth;
-    this.videoH = height || this.videoEl.videoHeight;
+    // videoWidth/Height are the decoded frames' ground truth; track settings
+    // can report pre-rotation (landscape-swapped) values on mobile.
+    const settings = this.stream.getVideoTracks()[0].getSettings();
+    this.videoW = this.videoEl.videoWidth || settings.width;
+    this.videoH = this.videoEl.videoHeight || settings.height;
 
     this.onStatus?.('در حال بارگذاری مدل ردیابی چهره…');
     await this.tracker.init({
@@ -88,12 +90,16 @@ export class ArTryOn {
     this.faceAnchor = new SmoothedFaceAnchor();
     this.scene.add(this.faceAnchor.group);
 
-    // Invisible depth-only face mesh: makes the real face hide the parts of the
-    // glasses behind it (nose over far lens, temples behind the head). Parented
-    // straight under the face anchor so it tracks the actual face — the fit
-    // sliders below must move only the glasses, not this.
-    this.occluder = createFaceOccluder();
-    this.faceAnchor.group.add(this.occluder);
+    // Occlusion, two layers (both invisible, depth-only):
+    // 1. a live per-frame mesh of the user's OWN face built from the 468
+    //    tracked landmarks (screen-accurate silhouettes — see faceOccluder.js),
+    //    positioned in world space each frame, so it lives at the scene root;
+    this.faceMesh = new LiveFaceOccluder();
+    this.scene.add(this.faceMesh.mesh);
+    // 2. an approximate skull volume behind the face, rigidly tracking the
+    //    head, hiding the far temple arm and the near arm's behind-ear hook.
+    this.skull = createSkullDome();
+    this.faceAnchor.group.add(this.skull);
 
     // Live fit-calibration offset, adjustable from the UI sliders.
     this.fitOffset = new THREE.Group();
@@ -127,25 +133,56 @@ export class ArTryOn {
     this.fitOffset.scale.setScalar(scale);
   }
 
+  /**
+   * Pixel-exact "cover" layout, applied identically to the video AND the 3D
+   * canvas. CSS object-fit crops the video but used to leave the canvas
+   * stretched to the stage's different aspect ratio, so the render was
+   * squeezed relative to the video — glasses drifted off the face more the
+   * further it sat from the image centre or the more the head turned. Sizing
+   * both elements to the video's native aspect (scaled to cover the stage,
+   * centred, overflow clipped by the stage) keeps every rendered pixel
+   * aligned with the video pixel beneath it, at any camera aspect or angle.
+   */
   _resize() {
-    if (!this.renderer) return;
-    const w = this.canvasEl.clientWidth;
-    const h = this.canvasEl.clientHeight;
-    if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
+    if (!this.renderer || !this.videoW || !this.videoH) return;
+    const stage = this.canvasEl.parentElement.getBoundingClientRect();
+    if (!stage.width || !stage.height) return;
+
+    const scale = Math.max(stage.width / this.videoW, stage.height / this.videoH);
+    const w = Math.round(this.videoW * scale);
+    const h = Math.round(this.videoH * scale);
+    const left = Math.round((stage.width - w) / 2);
+    const top = Math.round((stage.height - h) / 2);
+    for (const el of [this.videoEl, this.canvasEl]) {
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+      el.style.width = `${w}px`;
+      el.style.height = `${h}px`;
+      // The page is RTL: over-constrained absolute boxes resolve from `right`
+      // there, so the stylesheet's inset:0 must be explicitly released.
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+    }
+
+    this.renderer.setSize(w, h, false); // buffer only; CSS size set above
     this.camera.aspect = this.videoW / this.videoH;
     this.camera.updateProjectionMatrix();
   }
 
   _tick() {
     this._raf = requestAnimationFrame(this._tick.bind(this));
-    const matrix = this.tracker.detect(this.videoEl);
-    const hasFace = this.faceAnchor.update(matrix, performance.now());
+    const detection = this.tracker.detect(this.videoEl);
+    const hasFace = this.faceAnchor.update(detection?.matrix ?? null, performance.now());
 
     if (hasFace) {
+      if (detection?.landmarks) {
+        this.faceAnchor.group.updateMatrixWorld();
+        this.faceMesh.update(detection.landmarks, this.faceAnchor.group.matrixWorld, this.camera);
+      }
       this._noFaceFrames = 0;
       this.onStatus?.(null);
     } else {
+      this.faceMesh.hide();
       this._noFaceFrames += 1;
       if (this._noFaceFrames === NO_FACE_HINT_FRAMES) {
         this.onStatus?.('صورت شما دیده نمی‌شود — نور بیشتر یا نزدیک‌تر شوید', false);
@@ -162,11 +199,11 @@ export class ArTryOn {
     this.stream?.getTracks().forEach((t) => t.stop());
     this.stream = null;
     this.tracker.dispose();
-    this.occluder?.traverse((obj) => {
-      obj.geometry?.dispose();
-      obj.material?.dispose();
-    });
-    this.occluder = null;
+    this.faceMesh?.dispose();
+    this.faceMesh = null;
+    this.skull?.geometry.dispose();
+    this.skull?.material.dispose();
+    this.skull = null;
     this.renderer?.dispose();
     this.renderer = null;
   }
