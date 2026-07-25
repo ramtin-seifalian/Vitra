@@ -36,8 +36,11 @@ export class FaceTracker {
   /**
    * Runs detection for the current video frame. Safe to call every
    * requestAnimationFrame — internally skips re-processing the same frame.
-   * @returns {Float32Array|null} column-major 4x4 facial transformation
-   *   matrix for the first detected face, or null if no new result / no face.
+   * @returns {{matrix: Float32Array, landmarks: Array<{x,y,z}>}|null}
+   *   `matrix` is the column-major 4x4 facial transformation matrix (rigid
+   *   metric pose), `landmarks` the 468 per-frame landmarks in normalized
+   *   video coordinates — the live "scan" of the user's actual face used for
+   *   screen-accurate occlusion. Null if no new result / no face.
    */
   detect(videoEl) {
     if (!this.landmarker || videoEl.readyState < 2) return null;
@@ -46,7 +49,8 @@ export class FaceTracker {
 
     const result = this.landmarker.detectForVideo(videoEl, performance.now());
     const matrix = result.facialTransformationMatrixes?.[0]?.data;
-    return matrix ?? null;
+    const landmarks = result.faceLandmarks?.[0];
+    return matrix && landmarks ? { matrix, landmarks } : null;
   }
 
   dispose() {
