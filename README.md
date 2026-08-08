@@ -7,11 +7,14 @@ real time.
 
 ## Roadmap
 
-- **Phase 1 (this repo, current):** single page, default procedural 3D
-  glasses, webcam face-tracked try-on.
-- **Phase 2:** load real scanned glasses models (client-provided).
-- **Phase 3:** package as a WordPress/WooCommerce plugin — model upload on
-  the product admin page, try-on widget on the single product page.
+- **Phase 1 (done):** single page, procedural 3D glasses, webcam
+  face-tracked try-on.
+- **Phase 2 (done):** real glTF glasses models with a per-model registry
+  (scale / fit / material overrides), live face occlusion.
+- **Phase 3 (next):** package as a WordPress/WooCommerce plugin — API-key
+  settings, per-product model upload or AI generation from photos, and a
+  Try On button on the single product page. See **[ROADMAP.md](ROADMAP.md)**
+  for the full build plan.
 
 ## How it works
 
