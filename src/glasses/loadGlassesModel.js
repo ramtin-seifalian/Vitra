@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createGlasses } from './createGlasses.js';
+import { createAcetateFrame } from './createAcetateFrame.js';
+
+// Parametric reproductions of real products, built from their optical spec
+// (lens width x height, bridge, temple length) rather than loaded as assets.
+const PARAMETRIC_FRAMES = {
+  'square-oversized': {},
+};
 
 /**
  * Real scanned/authored glasses models (phase 2), registered alongside the
@@ -86,6 +93,11 @@ function loadRawModel(style) {
  * try-on never breaks on a missing/blocked asset.
  */
 export async function getGlasses(style) {
+  if (style in PARAMETRIC_FRAMES) {
+    const group = createAcetateFrame(PARAMETRIC_FRAMES[style]);
+    group.userData.style = style;
+    return group;
+  }
   if (!isModelStyle(style)) return createGlasses(style);
   try {
     const raw = await loadRawModel(style);

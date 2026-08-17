@@ -15,7 +15,7 @@ const fitY = document.getElementById('fit-y');
 const fitZ = document.getElementById('fit-z');
 const fitScale = document.getElementById('fit-scale');
 
-let currentStyle = 'sunglasses';
+let currentStyle = 'square-oversized';
 let arSession = null;
 let arActive = false;
 
