@@ -15,7 +15,7 @@ export class GeneratorViewer {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 0.95;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
@@ -23,11 +23,15 @@ export class GeneratorViewer {
 
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    // Held well below 1: the point of this viewer is to show the colour that
+    // was measured off the product, and a full-strength studio environment
+    // plus ACES tone mapping washes a saturated frame out to a pale tint.
+    this.scene.environmentIntensity = 0.55;
 
-    const key = new THREE.DirectionalLight(0xffffff, 1.2);
+    const key = new THREE.DirectionalLight(0xffffff, 0.75);
     key.position.set(5, 6, 8);
     this.scene.add(key);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
     this.holder = new THREE.Group();
     this.scene.add(this.holder);

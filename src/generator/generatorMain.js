@@ -38,6 +38,7 @@ const state = {
   sideAnalysis: null,
   model: null,
   lensOpacityAuto: true,
+  depthAuto: true,
 };
 
 function showStatus(message, isError = false) {
@@ -51,6 +52,16 @@ const ERROR_FA = {
   'no-object': 'عینکی در عکس تشخیص داده نشد. پس‌زمینه باید سفید/یکدست باشد.',
   'object-too-small': 'عینک در عکس خیلی کوچک است — نزدیک‌تر عکس بگیرید تا عینک کادر را پر کند.',
   'contour-failed': 'استخراج خطوط فریم ناموفق بود — نور یکنواخت‌تر و پس‌زمینهٔ ساده‌تر امتحان کنید.',
+  // Raised by the reconstruction when the measured shape is not a pair of
+  // glasses. Refusing here is deliberate: a plausible-looking wrong model is
+  // worse than a clear "this photo will not work".
+  'need-two-lenses':
+    'دو عدسی جدا تشخیص داده نشد. عکس باید کاملاً رو‌به‌رو باشد و هر دو عدسی دیده شوند.',
+  'not-glasses-shaped':
+    'شکل تشخیص‌داده‌شده نسبت عرض به ارتفاع یک عینک را ندارد. احتمالاً پس‌زمینه یا سایه هم جزو فریم شمرده شده.',
+  'implausible-lens-size':
+    'اندازهٔ عدسی با عرض فریمی که وارد کرده‌اید نمی‌خواند. عدد «عرض کل فریم» را بررسی کنید.',
+  'implausible-bridge': 'فاصلهٔ بین دو عدسی غیرواقعی است — عکس رو‌به‌روتر و بدون زاویه بگیرید.',
 };
 
 function faError(err) {
@@ -95,16 +106,33 @@ function renderReport() {
     reportBox.hidden = true;
     return;
   }
+  const mm = (cm) => Math.round(cm * 10);
+  const spec = state.model?.spec;
+
   const lines = [
-    '✔ فریم تشخیص داده شد — رنگ غالب: ' + swatch(a.rimColor),
+    '✔ فریم تشخیص داده شد — رنگ: ' + swatch(a.rimColor),
     '✔ عدسی: ' + (a.apertures.length || 'هیچ') + ' عدد — روش: ' +
       (LENS_SOURCE_FA[a.lensSource] ?? 'تشخیص نشد (فریم بدون عدسی ساخته می‌شود)') +
       (a.lensTint ? ' — رنگ عدسی: ' + swatch(a.lensTint) : ''),
     state.sideAnalysis
-      ? '✔ دسته از عکس بغل ساخته شد' + (state.sideAnalysis.flipped ? ' (عکس به‌صورت خودکار آینه شد)' : '')
-      : 'ℹ عکس بغل داده نشده — دستهٔ پیش‌فرض هم‌رنگ فریم ساخته شد',
-    'مقیاس: عرض فریم = ' + params.frameWidth.value + 'mm',
+      ? '✔ دسته از روی پروفیل عکس بغل اندازه‌گیری شد' +
+        (state.sideAnalysis.flipped ? ' (عکس خودکار آینه شد)' : '')
+      : 'ℹ عکس بغل داده نشده — دسته با نسبت‌های استاندارد ساخته شد',
   ];
+
+  // The measured spec is the actual output of the reconstruction: these are
+  // the numbers a frame is specified by, printed inside every real temple.
+  if (spec) {
+    lines.push(
+      '<b>مشخصات اندازه‌گیری‌شده</b>',
+      'فرم عدسی: <b>' + spec.shape + '</b>',
+      'کد سایز: <b>' + mm(spec.lensWidth) + '□' + mm(spec.bridgeGap) + '-' +
+        params.templeLength.value + '</b>',
+      'ارتفاع عدسی: ' + mm(spec.lensHeight) + 'mm · ضخامت دور فریم: ' + mm(spec.rim) +
+        'mm · ضخامت ورق: ' + mm(spec.depth) + 'mm',
+      'جنس تشخیص‌داده‌شده: ' + (spec.rim < 0.28 ? 'فلزی (وایر)' : 'کائوچو/استات')
+    );
+  }
   reportBox.innerHTML = lines.join('<br>');
   reportBox.hidden = false;
 }
@@ -156,10 +184,14 @@ function rebuildModel() {
     params: {
       frameWidthMM: Number(params.frameWidth.value) || 140,
       templeLengthMM: Number(params.templeLength.value) || 145,
-      depthCM: Number(params.depth.value) / 10,
+      depthCM: state.depthAuto ? null : Number(params.depth.value) / 10,
       lensOpacity: state.lensOpacityAuto ? null : Number(params.lensOpacity.value),
     },
   });
+  if (state.depthAuto) {
+    params.depth.value = (state.model.spec.depth * 10).toFixed(0);
+    el('depth-val').textContent = 'خودکار (' + params.depth.value + 'mm)';
+  }
   viewer.setModel(state.model.group);
   exportBtn.disabled = false;
   tryOnBtn.disabled = false;
@@ -210,6 +242,7 @@ function debounced(fn) {
 }
 
 params.depth.addEventListener('input', () => {
+  state.depthAuto = false;
   el('depth-val').textContent = params.depth.value + 'mm';
   if (state.frontAnalysis) debounced(() => run());
 });

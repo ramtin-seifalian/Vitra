@@ -65,15 +65,32 @@ model downloads (`src/generator/`):
    then Chaikin corner-cutting. The tolerance has to scale with the photo:
    at a fixed 1px it keeps every pixel stair-step, and extruding those gives
    the frame and temple edges a visible sawtooth.
-4. **Model building** (`photoGlassesBuilder.js`) — the outer contour is
-   extruded into the frame front with the lens contours punched through as
-   holes, and the photo itself is projected onto the front face, so printed
-   logos, patterns and colour gradients survive into the 3D model. Lenses are
-   transparent `MeshPhysicalMaterial` planes seated in the apertures, tinted
-   from the photo, with opacity derived from the measured lens luminance
-   (dark tint → dense lens) and overridable live. Temples come from the side
-   photo's silhouette, or from a tapered procedural arm in the frame colour
-   when no side photo is given.
+4. **Shape fitting** (`shapeFit.js`) — the step that makes this a
+   reconstruction rather than a photo cut-out. A traced outline is noisy and
+   slightly asymmetric; real glasses are manufactured and symmetric, so that
+   prior is imposed: the two apertures are averaged into ONE canonical
+   aperture used mirrored on both sides, the outer silhouette is folded onto
+   its own mirror image, and curves are low-pass filtered — apertures by
+   elliptic Fourier descriptors (~10 harmonics, enough to keep round vs
+   square vs cat-eye distinct), the outer silhouette by local averaging
+   (Fourier rings badly on its straight runs and hinge lugs). The aperture is
+   then classified and measured into the spec a frame is actually specified
+   by: lens width × height, bridge, rim thicknesses — the `52□18-145` printed
+   inside every real temple.
+5. **Model building** (`photoGlassesBuilder.js`) — real geometry from that
+   spec: a moulded front with the apertures cut through it, lenses seated
+   under the rim lip, hinge rivets, nose pads on wire frames, and temples
+   swept along a 3D path with the taper measured off the side photo at
+   stations along the arm. **The photo is never used as a texture** — only
+   for shape and for the measured colours of the parts. Lens opacity is
+   derived from the measured lens luminance (dark tint → dense lens) and is
+   adjustable live, and the tint is rendered as a synthesised vertical
+   gradient rather than sampled pixels.
+
+The reconstruction refuses rather than guesses: if two lens apertures aren't
+found, or the measured proportions aren't those of a pair of glasses, it
+reports what's wrong with the photo instead of producing a plausible-looking
+wrong model.
 
 The model is authored in face-space centimetres with its origin at the
 front's optical centre, which is exactly what the try-on placement expects —
@@ -151,9 +168,11 @@ requires the deployed page to have normal internet access to
   eye on first real-world test.
 - No product catalog / WordPress integration yet — that's phase 3.
 - The photo generator reconstructs the frame from its *silhouette*: a
-  straight-on front view plus a side view. It cannot recover detail no
-  silhouette can carry — the front's true curvature is approximated by a
-  fixed cylindrical face-form wrap, and nose pads and hinge hardware are not
-  modelled as separate parts. Frames photographed against a busy background
-  will fail segmentation outright, by design, rather than produce a
-  plausible-looking wrong model.
+  straight-on front view plus a side view. It cannot recover what a
+  silhouette does not carry — the front's true curvature is approximated by a
+  fixed cylindrical face-form wrap, and surface decoration (printed logos,
+  tortoiseshell patterning, two-tone laminates) is reduced to a single
+  measured colour per part, because the alternative — projecting the
+  photograph onto the model — only looks right from the angle it was shot
+  from. Frames photographed against a busy background fail segmentation
+  outright, by design.

@@ -1,7 +1,7 @@
 import './style.css';
 import { IdlePreview } from './scene/idlePreview.js';
 import { ArTryOn } from './scene/arTryOn.js';
-import { hasCustomModel } from './generator/customModelStore.js';
+import { hasCustomModel, hasCustomModelFlag } from './generator/customModelStore.js';
 
 const idleCanvas = document.getElementById('idle-canvas');
 const arLayer = document.getElementById('ar-layer');
@@ -27,13 +27,21 @@ idlePreview.setStyle(currentStyle);
 
 // A frame generated on generator.html is offered as its own style, and is
 // what the user most likely came back to try on — so select it right away.
-hasCustomModel().then((exists) => {
-  if (!exists) return;
-  customStyleBtn.hidden = false;
-  if (new URLSearchParams(location.search).get('style') === 'custom') {
+// The synchronous flag is checked first so the chip is present on the very
+// first paint; the IndexedDB read then confirms (or retracts) it.
+function offerCustomStyle(exists) {
+  customStyleBtn.hidden = !exists;
+  if (
+    exists &&
+    !customStyleBtn.classList.contains('active') &&
+    new URLSearchParams(location.search).get('style') === 'custom'
+  ) {
     customStyleBtn.click();
   }
-});
+}
+
+offerCustomStyle(hasCustomModelFlag());
+hasCustomModel().then(offerCustomStyle);
 
 function showStatus(message, isError = false) {
   if (!message) {
