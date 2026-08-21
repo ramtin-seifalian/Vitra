@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createGlasses } from './createGlasses.js';
 import { createAcetateFrame } from './createAcetateFrame.js';
+import { loadCustomModel } from '../generator/customModelStore.js';
 
 // Parametric reproductions of real products, built from their optical spec
 // (lens width x height, bridge, temple length) rather than loaded as assets.
@@ -48,6 +49,43 @@ const GLASSES_MODELS = {
 
 export const MODEL_STYLES = Object.keys(GLASSES_MODELS);
 
+// The frame the user generated from their own product photos (generator.html).
+// It is authored directly in face-space centimetres with its origin at the
+// front's optical centre, so it only needs translating onto the nose bridge:
+// lens centres onto the pupil line (y), and the back of the front slab just
+// clear of the bridge (z) — the same numbers the other registry entries carry.
+export const CUSTOM_STYLE = 'custom';
+const CUSTOM_FIT = { position: [0, 2.5, 5.45] };
+
+let customPromise = null;
+
+/** Parse the GLB held in IndexedDB once; callers get clones of the result. */
+function loadCustomScene() {
+  customPromise ??= loadCustomModel().then((record) => {
+    if (!record) throw new Error('no-custom-model');
+    return loader.parseAsync(record.glb, '');
+  });
+  return customPromise;
+}
+
+/** Drop the parse cache, so a newly generated frame is picked up. */
+export function invalidateCustomModel() {
+  customPromise = null;
+}
+
+/** Build the user's generated frame, ready to drop onto the face anchor. */
+async function loadCustomGlasses() {
+  const gltf = await loadCustomScene();
+  const group = new THREE.Group();
+  group.name = 'glasses-custom';
+  const instance = gltf.scene.clone(true);
+  instance.position.fromArray(CUSTOM_FIT.position);
+  group.add(instance);
+  group.userData.style = CUSTOM_STYLE;
+  group.userData.isModel = true; // clones share cached resources — never deep-disposed
+  return group;
+}
+
 export function isModelStyle(style) {
   return style in GLASSES_MODELS;
 }
@@ -93,6 +131,15 @@ function loadRawModel(style) {
  * try-on never breaks on a missing/blocked asset.
  */
 export async function getGlasses(style) {
+  if (style === CUSTOM_STYLE) {
+    try {
+      return await loadCustomGlasses();
+    } catch (err) {
+      customPromise = null;
+      console.warn('[glasses] no usable generated frame, using procedural fallback', err);
+      return createGlasses('square');
+    }
+  }
   if (style in PARAMETRIC_FRAMES) {
     const group = createAcetateFrame(PARAMETRIC_FRAMES[style]);
     group.userData.style = style;

@@ -11,10 +11,74 @@ real time.
   face-tracked try-on.
 - **Phase 2 (done):** real glTF glasses models with a per-model registry
   (scale / fit / material overrides), live face occlusion.
+- **Phase 2.5 (done):** a self-contained photo → 3D generator
+  (`generator.html`): upload product photos of a real pair of glasses and get
+  a 3D model of *that* frame back, wearable in the try-on.
 - **Phase 3 (next):** package as a WordPress/WooCommerce plugin — API-key
   settings, per-product model upload or AI generation from photos, and a
   Try On button on the single product page. See **[ROADMAP.md](ROADMAP.md)**
   for the full build plan.
+
+## Building a frame from photos (`generator.html`)
+
+Reached from the link under the Try On button. Upload a **front** photo of a
+real pair of glasses (a **side** photo of one open temple is optional but
+recommended) and the page reconstructs the frame in 3D, shows it in an
+orbitable studio viewer, and can hand it straight to the try-on or export it
+as a `.glb`.
+
+### Photo requirements
+
+Accuracy is bounded by the photo, so the page states these up front:
+
+- **Plain, uniform background** — white paper is ideal. The background is
+  identified from the image's border ring and flood-filled away, so a busy
+  background is the one thing that will break reconstruction.
+- **Straight-on front view**, no perspective, frame filling most of the
+  frame — the silhouette is taken literally, so a tilted shot yields a
+  tilted frame.
+- **Even light**, no hard shadow under the frame and no blown-out specular
+  glare on the lenses.
+- **Side photo:** one temple only, hinge end preferably on the left (the page
+  detects and mirrors it automatically if not).
+- Enter the frame's real **total width in mm** (printed on the temple, e.g.
+  `52□18-145`) so the model comes out at true scale, in the same metric face
+  space the tracker uses.
+
+### How the reconstruction works
+
+Everything runs locally in the browser on typed arrays — no service calls, no
+model downloads (`src/generator/`):
+
+1. **Background removal** (`segmentation.js`) — the border ring gives a
+   median background colour; every pixel within a tolerance of it that is
+   *connected to the border* is background. Pixels enclosed by the frame are
+   deliberately kept separate, because those are the lens holes.
+2. **Lens detection** (`photoAnalysis.js`) — three tiers, tried in order:
+   background-coloured **enclosed holes** (clear eyeglasses seen against the
+   backdrop), then a **colour split** against the measured rim colour
+   (tinted sunglasses), then a purely **geometric inset** of the silhouette.
+   Which tier fired is reported in the UI, since it tells the user whether
+   the photo did its job.
+3. **Contours** (`contours.js`) — Moore-neighbour boundary tracing, then
+   Ramer–Douglas–Peucker simplification at an image-size-relative tolerance,
+   then Chaikin corner-cutting. The tolerance has to scale with the photo:
+   at a fixed 1px it keeps every pixel stair-step, and extruding those gives
+   the frame and temple edges a visible sawtooth.
+4. **Model building** (`photoGlassesBuilder.js`) — the outer contour is
+   extruded into the frame front with the lens contours punched through as
+   holes, and the photo itself is projected onto the front face, so printed
+   logos, patterns and colour gradients survive into the 3D model. Lenses are
+   transparent `MeshPhysicalMaterial` planes seated in the apertures, tinted
+   from the photo, with opacity derived from the measured lens luminance
+   (dark tint → dense lens) and overridable live. Temples come from the side
+   photo's silhouette, or from a tapered procedural arm in the frame colour
+   when no side photo is given.
+
+The model is authored in face-space centimetres with its origin at the
+front's optical centre, which is exactly what the try-on placement expects —
+so "امتحان روی صورت" saves the GLB to IndexedDB and it appears as its own
+style chip (`عینک من`) on the try-on page.
 
 ## How it works
 
@@ -86,3 +150,10 @@ requires the deployed page to have normal internet access to
   fit-calibration panel is included specifically so this can be tuned by
   eye on first real-world test.
 - No product catalog / WordPress integration yet — that's phase 3.
+- The photo generator reconstructs the frame from its *silhouette*: a
+  straight-on front view plus a side view. It cannot recover detail no
+  silhouette can carry — the front's true curvature is approximated by a
+  fixed cylindrical face-form wrap, and nose pads and hinge hardware are not
+  modelled as separate parts. Frames photographed against a busy background
+  will fail segmentation outright, by design, rather than produce a
+  plausible-looking wrong model.
