@@ -77,7 +77,16 @@ export class GeneratorViewer {
     box.getBoundingSphere(_sphere);
     const halfFov = Math.tan((this.camera.fov * Math.PI) / 360) * Math.min(1, this.camera.aspect);
     const dist = (_sphere.radius / halfFov) * 1.05;
-    this.camera.position.set(0, _sphere.radius * 0.1, dist);
+    // Open on a three-quarter view. Head-on, a pair of glasses is almost
+    // indistinguishable from a picture of one — the angle is what shows the
+    // temples, the rim's thickness and the curve of the lenses.
+    const az = THREE.MathUtils.degToRad(38);
+    const el = THREE.MathUtils.degToRad(14);
+    this.camera.position.set(
+      dist * Math.cos(el) * Math.sin(az),
+      dist * Math.sin(el),
+      dist * Math.cos(el) * Math.cos(az)
+    );
     this.controls.target.set(0, 0, 0);
     this.holder.add(this.wrapper);
   }

@@ -363,45 +363,87 @@ export function measureTempleProfile(mask, width, height, comp, stations = 24) {
   const x1 = comp.maxX;
   const lengthPx = Math.max(x1 - x0, 1);
 
-  const heights = [];
-  const midY = [];
+  // At each station take the run of mask pixels nearest the previous
+  // station's centre, so a speck of noise elsewhere in the column cannot
+  // capture the measurement.
+  const picked = [];
+  let prevMid = null;
   for (let s = 0; s < stations; s++) {
     const x = Math.round(x0 + ((s + 0.5) / stations) * lengthPx);
+    const runs = [];
     let lo = -1;
-    let hi = -1;
     for (let y = 0; y < height; y++) {
-      if (mask[y * width + x] === 1) {
-        if (lo < 0) lo = y;
-        hi = y;
+      const on = mask[y * width + x] === 1;
+      if (on && lo < 0) lo = y;
+      if (lo >= 0 && (!on || y === height - 1)) {
+        const hi = on ? y : y - 1;
+        runs.push({ h: hi - lo + 1, mid: (lo + hi) / 2 });
+        lo = -1;
       }
     }
-    heights.push(lo < 0 ? 0 : hi - lo + 1);
-    midY.push(lo < 0 ? NaN : (lo + hi) / 2);
+    if (!runs.length) {
+      picked.push(null);
+      continue;
+    }
+    const best =
+      prevMid == null
+        ? runs.reduce((a, b) => (b.h > a.h ? b : a))
+        : runs.reduce((a, b) => (Math.abs(b.mid - prevMid) < Math.abs(a.mid - prevMid) ? b : a));
+    prevMid = best.mid;
+    picked.push(best);
   }
 
-  // Fill any station the mask missed, so the sweep never collapses.
-  for (let s = 0; s < stations; s++) {
-    if (heights[s] > 0) continue;
-    const prev = heights.slice(0, s).filter((v) => v > 0).pop();
-    const next = heights.slice(s + 1).find((v) => v > 0);
-    heights[s] = prev ?? next ?? 1;
-  }
+  const firstSeen = picked.find(Boolean);
+  const base = firstSeen ? firstSeen.h : 1;
+  const startMid = firstSeen ? firstSeen.mid : 0;
 
-  const base = heights[0] || 1;
-  const normalised = heights.map((v) => v / base);
-
-  // The ear bend: the last station whose centreline is still near the front's,
-  // i.e. where the arm stops running straight and starts dropping.
-  const startMid = midY.find((v) => !Number.isNaN(v)) ?? 0;
-  const drop = Math.max(...midY.map((v) => (Number.isNaN(v) ? 0 : v - startMid)));
-  let bendAt = 0.72;
+  // Where the arm stops running back and starts dropping over the ear.
+  const drop = Math.max(...picked.map((p) => (p ? p.mid - startMid : 0)));
+  let bendAt = 0.78;
   if (drop > base * 0.35) {
     for (let s = stations - 1; s >= 0; s--) {
-      if (!Number.isNaN(midY[s]) && midY[s] - startMid < drop * 0.25) {
+      if (picked[s] && picked[s].mid - startMid < drop * 0.25) {
         bendAt = (s + 0.5) / stations;
         break;
       }
     }
   }
-  return { lengthPx, baseHeightPx: base, stations: normalised, bendAt };
+
+  // A column's height only measures the arm while the arm runs horizontally.
+  // Through the ear hook the arm turns vertical, so the column spans the whole
+  // bend and the measurement balloons — reading as an arm that gets *thicker*
+  // towards the ear. Past the bend, continue the taper the arm was already on.
+  const bendIdx = Math.max(1, Math.min(stations - 1, Math.round(bendAt * stations)));
+  const heights = [];
+  for (let s = 0; s < stations; s++) {
+    if (s < bendIdx && picked[s]) heights.push(picked[s].h / base);
+    else heights.push(null);
+  }
+  for (let s = 0; s < bendIdx; s++) {
+    if (heights[s] != null) continue;
+    heights[s] = heights.slice(0, s).filter((v) => v != null).pop() ?? 1;
+  }
+  // A temple tapers from hinge to ear; it never gets thicker along the way.
+  // Enforcing that removes the last of the bend's contamination, which starts
+  // creeping into the columns slightly before the bend is detected.
+  for (let s = 1; s < bendIdx; s++) {
+    heights[s] = Math.min(heights[s], heights[s - 1]);
+  }
+
+  const atBend = heights[bendIdx - 1] ?? 0.6;
+  for (let s = bendIdx; s < stations; s++) {
+    const f = (s - bendIdx + 1) / Math.max(stations - bendIdx, 1);
+    heights[s] = atBend * (1 - 0.22 * f); // tips narrow, they do not flare
+  }
+
+  // Smooth: the sweep interpolates linearly between stations, so unsmoothed
+  // steps show as a row of facets along the arm's edge.
+  const smooth = heights.map((_, i) => {
+    const a = heights[Math.max(i - 1, 0)];
+    const b = heights[i];
+    const c = heights[Math.min(i + 1, stations - 1)];
+    return (a + 2 * b + c) / 4;
+  });
+
+  return { lengthPx, baseHeightPx: base, stations: smooth, bendAt };
 }

@@ -78,11 +78,29 @@ model downloads (`src/generator/`):
    by: lens width × height, bridge, rim thicknesses — the `52□18-145` printed
    inside every real temple.
 5. **Model building** (`photoGlassesBuilder.js`) — real geometry from that
-   spec: a moulded front with the apertures cut through it, lenses seated
-   under the rim lip, hinge rivets, nose pads on wire frames, and temples
-   swept along a 3D path with the taper measured off the side photo at
-   stations along the arm. **The photo is never used as a texture** — only
-   for shape and for the measured colours of the parts. Lens opacity is
+   spec. **The photo is never used as a texture** — only for shape and for the
+   measured colours of the parts. What that geometry involves:
+   - the front is extruded with a deep quarter-circle bevel, giving the
+     pillowed cross-section milled acetate has, and is bent around the face on
+     its own surface normals rather than sheared, so the outer edges rotate
+     with the curve instead of still pointing straight back;
+   - shading uses creased normals throughout. `ExtrudeGeometry` is
+     non-indexed, so a plain `computeVertexNormals()` yields one normal per
+     triangle and renders the rounded rim as visible facets;
+   - lenses are spherical caps at a real base curve, tessellated as concentric
+     rings so the curve is smooth across the whole lens — a flat polygon reads
+     as a sheet of glass dropped in the hole;
+   - temples are swept along a 3D path, capped at both ends, with the taper
+     measured off the side photo at stations along the arm. The measurement is
+     forced monotonic: past the ear bend a column of the mask spans the whole
+     hook, which otherwise reads as an arm that gets *thicker* toward the ear;
+   - an endpiece block bridges the arm to the front. The hinge itself is sunk
+     inside it and never visible from outside on an acetate frame, so it is
+     not modelled.
+
+   Shape fitting runs at 256 points for accuracy but the mesh is built at
+   lower resolution, since creased normals de-index the geometry and every
+   extra outline point then costs three vertices on each surrounding surface. Lens opacity is
    derived from the measured lens luminance (dark tint → dense lens) and is
    adjustable live, and the tint is rendered as a synthesised vertical
    gradient rather than sampled pixels.
