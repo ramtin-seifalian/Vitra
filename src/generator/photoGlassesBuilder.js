@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   boundsOf,
   canonicalAperture,
@@ -6,6 +7,7 @@ import {
   ensureCCW,
   measureSpec,
   measureTempleProfile,
+  resampleClosed,
   smoothRing,
   symmetrizeAboutAxis,
 } from './shapeFit.js';
@@ -40,6 +42,17 @@ export const DEFAULT_PARAMS = {
 
 // A frame this thin in the rim is a wire frame, not moulded acetate.
 const METAL_RIM_CM = 0.28;
+
+// Shape fitting runs at 256 points for accuracy, but the *mesh* does not need
+// that: creased normals de-index the geometry, so every extra outline point
+// costs three vertices on each surrounding surface. These are the resolutions
+// the model is actually built at — well past the point where more is visible,
+// and small enough that the exported GLB stays quick to store and load.
+const OUTER_SEGMENTS = 160;
+const APERTURE_SEGMENTS = 120;
+const LENS_SEGMENTS = 96;
+const LENS_RINGS = 7;
+const TEMPLE_STEPS = 56;
 
 function rgbColor([r, g, b]) {
   return new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
@@ -111,17 +124,41 @@ function offsetRing(points, distance) {
   });
 }
 
-/** Bend a geometry back around the face: z -= k*x^2 (a cylindrical face-form). */
+/**
+ * Bend a geometry back around the face (a cylindrical face-form).
+ *
+ * Done as a real bend, not `z -= k*x^2`: that shears the slab, leaving its
+ * side walls still pointing straight back while the surface curves away, so
+ * the frame's outer edges face the wrong direction. Here each vertex is
+ * re-seated on the curved mid-surface along that surface's own normal, so the
+ * cross-section rotates with the curve as a moulded front's does.
+ */
 function applyWrap(geometry, k) {
   if (!k) return geometry;
   const pos = geometry.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
-    pos.setZ(i, pos.getZ(i) - k * x * x);
+    const z = pos.getZ(i);
+    // Mid-surface z = -k*x^2; its unit normal is (2kx, 0, 1)/|.|.
+    const inv = 1 / Math.hypot(2 * k * x, 1);
+    pos.setX(i, x + z * 2 * k * x * inv);
+    pos.setZ(i, -k * x * x + z * inv);
   }
   pos.needsUpdate = true;
-  geometry.computeVertexNormals();
   return geometry;
+}
+
+/**
+ * Smooth shading that keeps designed edges crisp.
+ *
+ * ExtrudeGeometry is non-indexed, so a plain computeVertexNormals() gives one
+ * normal per triangle — which renders the rounded rim as visible facets.
+ * Creased normals average across gentle joins (the bevel) while leaving the
+ * sharp front-to-side transition hard, which is exactly how polished acetate
+ * catches light.
+ */
+function smoothed(geometry, creaseDegrees = 50) {
+  return toCreasedNormals(geometry, (creaseDegrees * Math.PI) / 180);
 }
 
 // ------------------------------------------------------------------ materials
@@ -180,46 +217,99 @@ function buildFront(spec, curves, depth, params, material) {
     shape.holes.push(new THREE.Path(toVec2(placed, true)));
   }
 
-  const bevel = Math.min(depth * 0.34, spec.rim * 0.42);
+  // three's bevel profile is a quarter-circle, so enough segments turn the
+  // slab's edge into the rounded, pillowed cross-section milled acetate has.
+  const bevel = Math.min(depth * 0.38, spec.rim * 0.45);
+  const beveled = bevel > 0.004;
   const geometry = new THREE.ExtrudeGeometry(shape, {
-    depth: depth - bevel * 2,
-    bevelEnabled: bevel > 0.004,
+    depth: beveled ? depth - bevel * 2 : depth,
+    bevelEnabled: beveled,
     bevelThickness: bevel,
     bevelSize: bevel,
-    bevelSegments: 3,
+    bevelSegments: 4,
     curveSegments: 1,
   });
-  geometry.translate(0, 0, bevel);
+  if (beveled) geometry.translate(0, 0, bevel);
   applyWrap(geometry, params.wrapK);
 
-  const mesh = new THREE.Mesh(geometry, material);
+  const mesh = new THREE.Mesh(smoothed(geometry), material);
   mesh.name = 'front';
   return mesh;
 }
 
+/**
+ * A lens as a real optical surface: a spherical cap cut to the aperture
+ * outline, tessellated as concentric rings so the curve is smooth all the way
+ * across. A flat polygon reads as a sheet of glass dropped into the hole; the
+ * base curve is what makes it catch light like a lens.
+ *
+ * The geometry is built with its apex at z = 0 and its edges falling away
+ * behind it, centred on the aperture's own centre.
+ */
+function buildLensGeometry(outline, baseRadius, rings = LENS_RINGS) {
+  const ring = resampleClosed(ensureCCW(outline), LENS_SEGMENTS);
+  const n = ring.length;
+  const b = boundsOf(ring);
+  const sag = (r) => baseRadius - Math.sqrt(Math.max(baseRadius * baseRadius - r * r, 0));
+
+  const positions = [0, 0, 0];
+  const uvs = [0.5, (0 - b.minY) / Math.max(b.height, 1e-6)];
+  const indices = [];
+  let maxSag = 0;
+
+  for (let j = 1; j <= rings; j++) {
+    const t = j / rings;
+    for (let i = 0; i < n; i++) {
+      const x = ring[i].x * t;
+      const y = ring[i].y * t;
+      const s = sag(Math.hypot(x, y));
+      if (s > maxSag) maxSag = s;
+      positions.push(x, y, -s);
+      uvs.push(0.5, (y - b.minY) / Math.max(b.height, 1e-6));
+    }
+  }
+
+  for (let i = 0; i < n; i++) indices.push(0, 1 + i, 1 + ((i + 1) % n));
+  for (let j = 1; j < rings; j++) {
+    const inner = 1 + (j - 1) * n;
+    const outer = 1 + j * n;
+    for (let i = 0; i < n; i++) {
+      const i2 = (i + 1) % n;
+      indices.push(inner + i, outer + i, outer + i2, inner + i, outer + i2, inner + i2);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals(); // indexed, so this smooths across the cap
+  geometry.userData.maxSag = maxSag;
+  return geometry;
+}
+
 function buildLenses(spec, curves, depth, params, material) {
   const meshes = [];
-  // Seat the lens slightly *under* the rim lip, as a lens sits in its groove.
+  // Seat the lens slightly proud of the aperture so it tucks under the rim
+  // lip rather than floating in the hole.
   const seated = offsetRing(curves.aperture, 0.035);
+  // Base curve: flatter on a big lens, so the cap never bulges out past the
+  // front's own thickness. Roughly a base-4 to base-6 curve, as most frames use.
+  const baseRadius = Math.max(12, spec.lensWidth * 2.4);
+
   for (const side of [-1, 1]) {
     const mirrored = seated.map((p) => ({ x: side * p.x, y: p.y }));
-    const geometry = new THREE.ShapeGeometry(new THREE.Shape(toVec2(mirrored)));
-
-    // Remap v across the aperture so the gradient runs top-to-bottom once.
-    const b = boundsOf(curves.aperture);
-    const uv = geometry.attributes.uv;
-    for (let i = 0; i < uv.count; i++) {
-      uv.setY(i, (uv.getY(i) - b.minY) / Math.max(b.height, 1e-6));
-    }
-    uv.needsUpdate = true;
+    const geometry = buildLensGeometry(mirrored, baseRadius);
+    const { maxSag } = geometry.userData;
 
     const cx = side * spec.lensCenterX;
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'lens';
     mesh.renderOrder = 2;
-    // Planar and tilted to the face-form slope at its own centre. Bending the
-    // outline-only triangulation instead would show as facets across the glass.
-    mesh.position.set(cx, spec.lensCenterY, depth * 0.42 - params.wrapK * cx * cx);
+    // Sit the apex forward enough that the edges stay inside the front slab.
+    const apexZ = Math.min(depth * 0.92, maxSag + depth * 0.12);
+    mesh.position.set(cx, spec.lensCenterY, apexZ - params.wrapK * cx * cx);
+    // Tilted to the face-form slope at its own centre.
     mesh.rotation.y = Math.atan(2 * params.wrapK * cx);
     meshes.push(mesh);
   }
@@ -276,7 +366,7 @@ function buildTemple({ side, spec, profile, lengthCM, hinge, material }) {
   // the winding order and the lighting with it. Reversing the cross-section
   // ring on the mirrored side keeps the triangles facing outward.
   const section = side < 0 ? templeSection().reverse() : templeSection();
-  const steps = 72;
+  const steps = TEMPLE_STEPS;
   const positions = [];
   const indices = [];
   const up = new THREE.Vector3(0, 1, 0);
@@ -319,15 +409,88 @@ function buildTemple({ side, spec, profile, lengthCM, hinge, material }) {
     }
   }
 
+  // Cap both ends. A swept tube is open at its ends, which leaves a hole
+  // looking straight into the arm at the hinge and at the ear tip.
+  const ringSize = section.length;
+  for (const [ringStart, flip] of [[0, true], [steps * ringSize, false]]) {
+    const centre = positions.length / 3;
+    let cxp = 0;
+    let cyp = 0;
+    let czp = 0;
+    for (let k = 0; k < ringSize; k++) {
+      cxp += positions[(ringStart + k) * 3];
+      cyp += positions[(ringStart + k) * 3 + 1];
+      czp += positions[(ringStart + k) * 3 + 2];
+    }
+    positions.push(cxp / ringSize, cyp / ringSize, czp / ringSize);
+    for (let k = 0; k < ringSize; k++) {
+      const k2 = (k + 1) % ringSize;
+      if (flip) indices.push(centre, ringStart + k2, ringStart + k);
+      else indices.push(centre, ringStart + k, ringStart + k2);
+    }
+  }
+
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
 
-  const mesh = new THREE.Mesh(geometry, material);
+  // The swept cross-section is a rounded superellipse, so it is smooth all the
+  // way round and wants smoothing all the way round — at a tighter crease
+  // angle its own facets split into alternating hard and soft edges, which
+  // shows as a fine serration running the length of the arm. 60 degrees keeps
+  // the sweep smooth while still creasing the flat end caps.
+  const mesh = new THREE.Mesh(smoothed(geometry, 60), material);
   mesh.name = side < 0 ? 'temple-left' : 'temple-right';
   mesh.position.copy(hinge);
   return mesh;
+}
+
+/**
+ * The endpiece at the temple joint: the small block the front carries out to
+ * meet the arm. In any three-quarter view this junction is right where the eye
+ * lands, and without it the arm reads as butted against the frame. On an
+ * acetate frame the hinge itself is sunk inside that block and never visible
+ * from outside, so it is not modelled.
+ */
+function buildHinge(side, spec, depth, at, material) {
+  const group = new THREE.Group();
+  group.name = 'hinge';
+
+  const block = new THREE.Mesh(
+    new RoundedBoxLike(spec.rim * 1.15, spec.templeHeight * 0.9, depth * 0.85),
+    material
+  );
+  block.position.copy(at);
+  group.add(block);
+
+  return group;
+}
+
+/** A box with softened edges, so the endpiece matches the moulded front. */
+function RoundedBoxLike(w, h, d) {
+  const shape = new THREE.Shape();
+  const r = Math.min(w, h) * 0.3;
+  shape.moveTo(-w / 2 + r, -h / 2);
+  shape.lineTo(w / 2 - r, -h / 2);
+  shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
+  shape.lineTo(w / 2, h / 2 - r);
+  shape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
+  shape.lineTo(-w / 2 + r, h / 2);
+  shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
+  shape.lineTo(-w / 2, -h / 2 + r);
+  shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
+  const bevel = d * 0.18;
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: d - bevel * 2,
+    bevelEnabled: true,
+    bevelThickness: bevel,
+    bevelSize: bevel,
+    bevelSegments: 3,
+    curveSegments: 6,
+  });
+  geometry.translate(0, 0, -d / 2 + bevel);
+  return smoothed(geometry, 50);
 }
 
 /** Small metal rivet on the outer face of the front, at the hinge line. */
@@ -398,6 +561,10 @@ export function buildGlassesModel({ front, side = null, params: userParams = {} 
   const spec = measureSpec(aperture, outer, lensCenterX, lensCenterY);
   validate(front, spec);
 
+  // Measure at full resolution, build at mesh resolution.
+  const meshOuter = resampleClosed(outer, OUTER_SEGMENTS);
+  const meshAperture = resampleClosed(aperture, APERTURE_SEGMENTS);
+
   // ---- Parts of the spec that come from the side photo or sensible defaults.
   const lengthCM = params.templeLengthMM / 10;
   let profile = null;
@@ -425,8 +592,9 @@ export function buildGlassesModel({ front, side = null, params: userParams = {} 
   frontPivot.name = 'front-pivot';
   frontPivot.rotation.x = params.pantoscopic;
 
-  frontPivot.add(buildFront(spec, { outer, aperture }, depth, params, materials.frame));
-  for (const lens of buildLenses(spec, { outer, aperture }, depth, params, materials.lens)) {
+  const curves = { outer: meshOuter, aperture: meshAperture };
+  frontPivot.add(buildFront(spec, curves, depth, params, materials.frame));
+  for (const lens of buildLenses(spec, curves, depth, params, materials.lens)) {
     frontPivot.add(lens);
   }
 
@@ -443,14 +611,24 @@ export function buildGlassesModel({ front, side = null, params: userParams = {} 
   }
   group.add(frontPivot);
 
+  // The temples are NOT part of the front's pivot: the pantoscopic angle is
+  // precisely the angle between the front and the arms, so tilting both would
+  // cancel it out. The hinge assembly lives in temple space and overlaps the
+  // front slightly, which closes the seam that small angle opens.
   for (const side_ of [-1, 1]) {
+    const root = new THREE.Vector3(
+      side_ * (halfWidth - spec.rim * 0.3),
+      lugY,
+      hingeZ - depth * 0.35
+    );
+    group.add(buildHinge(side_, spec, depth, root, materials.frame));
     group.add(
       buildTemple({
         side: side_,
         spec,
         profile,
         lengthCM,
-        hinge: new THREE.Vector3(side_ * (halfWidth - spec.rim * 0.3), lugY, hingeZ - depth * 0.35),
+        hinge: root,
         material: materials.frame,
       })
     );
