@@ -1,0 +1,181 @@
+/* Generator page layout — shares the design tokens of style.css. */
+#gen-app {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding-bottom: 24px;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--accent-2);
+  text-decoration: none;
+}
+.back-link:hover { text-decoration: underline; }
+
+.gen-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 14px;
+  padding: 8px 14px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .gen-layout { grid-template-columns: 1fr; }
+}
+
+.gen-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guide {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.guide summary { cursor: pointer; font-weight: 600; color: var(--accent-2); }
+.guide ul { margin: 8px 0 4px; padding-inline-start: 18px; color: var(--text-dim); }
+.guide li { margin-bottom: 4px; }
+.guide b { color: var(--text); }
+
+.uploads {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.upload-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px;
+  background: var(--bg-elevated);
+  border: 1.5px dashed var(--border);
+  border-radius: 14px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s;
+  min-height: 120px;
+  justify-content: center;
+}
+.upload-card:hover { border-color: var(--accent); }
+.upload-card.has-photo { border-style: solid; border-color: var(--accent-2); }
+.upload-label { font-size: 13px; font-weight: 600; }
+.upload-hint { font-size: 12px; color: var(--text-dim); }
+.upload-preview {
+  width: 100%;
+  max-height: 140px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+}
+.param-grid label { display: flex; flex-direction: column; gap: 3px; color: var(--text-dim); }
+.param-grid .val { color: var(--accent-2); font-size: 11.5px; }
+.param-grid input[type='number'] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font: inherit;
+}
+.param-grid input[type='range'] { accent-color: var(--accent); }
+
+.gen-actions { display: flex; gap: 10px; }
+.gen-actions .primary-btn,
+.gen-actions .secondary-btn {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gen-actions .primary-btn {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  color: #fff;
+}
+.gen-actions .secondary-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.gen-actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.status-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.status-box.error { border-color: var(--danger); color: var(--danger); }
+
+.report-box {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.9;
+}
+.report-box .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  vertical-align: -2px;
+  margin-inline-start: 4px;
+}
+
+.gen-stage {
+  position: relative;
+  min-height: 420px;
+  height: calc(100svh - 140px);
+  max-height: 720px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, #1c1f2a, #0a0b0e);
+  border: 1px solid var(--border);
+}
+@media (max-width: 860px) {
+  .gen-stage { height: 60svh; }
+}
+.gen-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+
+.rotate-toggle {
+  position: absolute;
+  bottom: 10px;
+  inset-inline-start: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: rgba(13, 14, 18, 0.7);
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+.rotate-toggle input { accent-color: var(--accent); vertical-align: -2px; }

@@ -205,3 +205,26 @@ body {
   flex: 1;
   accent-color: var(--accent);
 }
+
+/* Call-to-action linking to the photo -> 3D generator page. */
+.gen-cta {
+  margin: 0 12px 10px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.gen-cta a {
+  color: var(--accent-2);
+  text-decoration: none;
+}
+
+.gen-cta a:hover {
+  text-decoration: underline;
+}
+
+/* The style chip for a frame the user generated from their own photos. */
+.style-btn.custom-btn {
+  border-color: var(--accent);
+  color: var(--text);
+}

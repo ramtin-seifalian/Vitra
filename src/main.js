@@ -1,6 +1,7 @@
 import './style.css';
 import { IdlePreview } from './scene/idlePreview.js';
 import { ArTryOn } from './scene/arTryOn.js';
+import { hasCustomModel } from './generator/customModelStore.js';
 
 const idleCanvas = document.getElementById('idle-canvas');
 const arLayer = document.getElementById('ar-layer');
@@ -15,12 +16,24 @@ const fitY = document.getElementById('fit-y');
 const fitZ = document.getElementById('fit-z');
 const fitScale = document.getElementById('fit-scale');
 
+const customStyleBtn = document.getElementById('custom-style-btn');
+
 let currentStyle = 'square-oversized';
 let arSession = null;
 let arActive = false;
 
 const idlePreview = new IdlePreview(idleCanvas);
 idlePreview.setStyle(currentStyle);
+
+// A frame generated on generator.html is offered as its own style, and is
+// what the user most likely came back to try on — so select it right away.
+hasCustomModel().then((exists) => {
+  if (!exists) return;
+  customStyleBtn.hidden = false;
+  if (new URLSearchParams(location.search).get('style') === 'custom') {
+    customStyleBtn.click();
+  }
+});
 
 function showStatus(message, isError = false) {
   if (!message) {
