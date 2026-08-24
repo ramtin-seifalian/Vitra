@@ -23,7 +23,8 @@
               <li><b>عکس روبه‌رو کاملاً مستقیم</b> باشد، بدون زاویه و پرسپکتیو؛ عینک بیشترِ کادر را پر کند.</li>
               <li>نور یکنواخت و بدون سایه زیر عینک و بدون انعکاس شدید روی عدسی‌ها.</li>
               <li>عکس واضح و با کیفیت (JPG یا PNG).</li>
-              <li><b>عکس بغل (اختیاری):</b> فقط دستهٔ باز عینک از نمای کنار در کادر باشد؛ سرِ لولا (سمت اتصال به فریم) ترجیحاً سمت چپ عکس.</li>
+              <li><b>عکس بغل:</b> کل عینک با دستهٔ باز، دقیقاً از پهلو. از روی آن زاویهٔ خمِ فریم، باریک‌شدن دسته و محل خم روی گوش اندازه‌گیری می‌شود.</li>
+              <li><b>عکس از بالا:</b> عینک با دستهٔ باز روی میز، دوربین دقیقاً از بالا. این تنها نمایی است که <b>ضخامت فریم، انحنای دور صورت و طول واقعی دسته</b> را نشان می‌دهد — بدون آن این سه عدد حدس زده می‌شوند.</li>
               <li>برای مقیاس واقعی، عرض کل فریم را (روی دستهٔ عینک چاپ شده، مثلاً 52□18-145) وارد کنید.</li>
             </ul>
           </details>
@@ -38,8 +39,14 @@
             <label class="upload-card" id="side-card">
               <input type="file" id="side-input" accept="image/*" hidden />
               <canvas class="upload-preview" id="side-preview" hidden></canvas>
-              <span class="upload-label">عکس بغل — دسته (اختیاری)</span>
+              <span class="upload-label">عکس از پهلو <b>(توصیه‌شده)</b></span>
               <span class="upload-hint" id="side-hint">برای انتخاب عکس کلیک کنید</span>
+            </label>
+            <label class="upload-card" id="top-card">
+              <input type="file" id="top-input" accept="image/*" hidden />
+              <canvas class="upload-preview" id="top-preview" hidden></canvas>
+              <span class="upload-label">عکس از بالا <b>(توصیه‌شده)</b></span>
+              <span class="upload-hint" id="top-hint">برای انتخاب عکس کلیک کنید</span>
             </label>
           </div>
 
@@ -47,7 +54,7 @@
             <label>عرض کل فریم (mm)
               <input type="number" id="frame-width" min="90" max="200" step="1" value="140" />
             </label>
-            <label>طول دسته (mm)
+            <label>طول دسته (mm) <span class="val" id="temple-length-note">اگر عکس بالا بدهید، اندازه‌گیری می‌شود</span>
               <input type="number" id="temple-length" min="100" max="190" step="1" value="145" />
             </label>
             <label>ضخامت فریم <span class="val" id="depth-val">4mm</span>
