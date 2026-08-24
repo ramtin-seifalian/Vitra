@@ -78,7 +78,129 @@ export function estimateBackground(imageData) {
  * (everything not border-connected background — enclosed holes stay "solid"
  * here and are separated later).
  */
-export function segment(imageData, tolerance) {
+/**
+ * Sobel gradient magnitude on luma, 0..255 per pixel.
+ *
+ * Colour distance alone cannot find a frame's boundary: a silver wire rim on a
+ * white backdrop is within a few units of the background, so any tolerance
+ * loose enough to remove the backdrop also eats the rim. An edge, however, is
+ * still an edge — a thin bright rim has a strong gradient at its border even
+ * when its colour barely differs.
+ */
+export function gradientMagnitude(imageData) {
+  const { data, width: w, height: h } = imageData;
+  const n = w * h;
+  const luma = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    luma[i] = 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2];
+  }
+  const grad = new Float32Array(n);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const gx =
+        -luma[i - w - 1] - 2 * luma[i - 1] - luma[i + w - 1] +
+        luma[i - w + 1] + 2 * luma[i + 1] + luma[i + w + 1];
+      const gy =
+        -luma[i - w - 1] - 2 * luma[i - w] - luma[i - w + 1] +
+        luma[i + w - 1] + 2 * luma[i + w] + luma[i + w + 1];
+      grad[i] = Math.min(255, Math.hypot(gx, gy) / 4);
+    }
+  }
+  return grad;
+}
+
+/** Value at the given percentile (0..1) of `values` over pixels where mask is set. */
+export function maskedPercentile(values, mask, q) {
+  const picked = [];
+  for (let i = 0; i < values.length; i++) if (!mask || mask[i]) picked.push(values[i]);
+  if (!picked.length) return 0;
+  picked.sort((a, b) => a - b);
+  return picked[Math.min(picked.length - 1, Math.floor(q * picked.length))];
+}
+
+/**
+ * The object mask, taking every piece of the product rather than the single
+ * biggest blob.
+ *
+ * A thin, bright part — a wire bridge, a polished nose bar — can be light
+ * enough that the background fill walks through it, cutting the frame into
+ * separate components. Picking the largest then keeps one lens ring and
+ * throws the rest of the glasses away. Dilating before labelling rejoins
+ * pieces that are merely a few pixels apart, and the grouping is then mapped
+ * back onto the undilated mask so no thickness is invented.
+ */
+export function groupObject(solid, w, h) {
+  const n = w * h;
+  const { labels, components } = labelComponents(solid, w, h);
+  if (!components.length) return null;
+
+  const biggest = components.reduce((a, b) => (b.area > a.area ? b : a));
+
+  // Every significant piece at roughly the same height belongs to the product.
+  // A thin bright part — a wire bridge, a polished nose bar — can be light
+  // enough that the background fill walks through it, cutting the frame into
+  // pieces that a "largest component" rule then throws away: on a round wire
+  // frame that leaves one lens ring and discards the other half of the
+  // glasses. The vertical-overlap test is what keeps a caption or a speck in
+  // the corner of the photo from being swept in along with them.
+  // Proximity, not vertical overlap: in a top-down view the arms run
+  // perpendicular to the front and barely share its rows, so an overlap test
+  // discards them and the frame measures a few millimetres deep. Distance
+  // between bounding boxes works whichever way the product is facing, and
+  // still rejects a caption or a speck in the corner of the photo.
+  const gap = Math.max(8, Math.hypot(w, h) * 0.04);
+  const boxGap = (a, b) => {
+    const dx = Math.max(0, Math.max(a.minX - b.maxX, b.minX - a.maxX));
+    const dy = Math.max(0, Math.max(a.minY - b.maxY, b.minY - a.maxY));
+    return Math.hypot(dx, dy);
+  };
+
+  const keep = new Set([biggest.id]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const c of components) {
+      if (keep.has(c.id) || c.area < biggest.area * 0.015) continue;
+      for (const other of components) {
+        if (!keep.has(other.id)) continue;
+        if (boxGap(c, other) <= gap) {
+          keep.add(c.id);
+          grew = true;
+          break;
+        }
+      }
+    }
+  }
+
+  const mask = new Uint8Array(n);
+  let area = 0;
+  let minX = w;
+  let minY = h;
+  let maxX = -1;
+  let maxY = -1;
+  let sx = -1;
+  let sy = -1;
+  for (let i = 0; i < n; i++) {
+    if (!solid[i] || !keep.has(labels[i])) continue;
+    mask[i] = 1;
+    area++;
+    const x = i % w;
+    const y = (i / w) | 0;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (sy < 0) {
+      sx = x;
+      sy = y;
+    }
+  }
+  if (area === 0) return null;
+  return { mask, area, minX, minY, maxX, maxY, sx, sy, pieces: keep.size };
+}
+
+export function segment(imageData, tolerance, options = {}) {
   const { data, width: w, height: h } = imageData;
   const n = w * h;
   const [br, bg, bb] = estimateBackground(imageData);
@@ -86,12 +208,22 @@ export function segment(imageData, tolerance) {
   for (let i = 0; i < n; i++) {
     if (colorDist(data, i * 4, br, bg, bb) < tolerance) bgLike[i] = 1;
   }
+
+  // The flood may not cross a strong edge. Without this a light frame on a
+  // light backdrop is simply absorbed: its colour is within tolerance, so the
+  // fill walks straight through it. Its border still has a real gradient, and
+  // stopping there keeps the rim in the object.
+  const grad = options.gradient ?? gradientMagnitude(imageData);
+  const edgeAt = options.edgeThreshold ?? Math.max(10, maskedPercentile(grad, null, 0.985));
+  const blocked = new Uint8Array(n);
+  for (let i = 0; i < n; i++) blocked[i] = grad[i] > edgeAt ? 1 : 0;
+
   // BFS from every border pixel through bgLike pixels.
   const borderBg = new Uint8Array(n);
   const queue = new Int32Array(n);
   let qh = 0, qt = 0;
   const seed = (i) => {
-    if (bgLike[i] && !borderBg[i]) {
+    if (bgLike[i] && !borderBg[i] && !blocked[i]) {
       borderBg[i] = 1;
       queue[qt++] = i;
     }
@@ -108,7 +240,7 @@ export function segment(imageData, tolerance) {
   }
   const solid = new Uint8Array(n);
   for (let i = 0; i < n; i++) solid[i] = borderBg[i] ? 0 : 1;
-  return { solid, bgLike, borderBg, background: [br, bg, bb] };
+  return { solid, bgLike, borderBg, background: [br, bg, bb], grad, edgeAt };
 }
 
 /**

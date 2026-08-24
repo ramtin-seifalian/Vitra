@@ -6,7 +6,6 @@ import {
   centroidOf,
   ensureCCW,
   measureSpec,
-  measureTempleProfile,
   resampleClosed,
   smoothRing,
   symmetrizeAboutAxis,
@@ -349,17 +348,24 @@ function buildTemple({ side, spec, profile, lengthCM, hinge, material }) {
   // gradually. Too few control points through the bend and Catmull-Rom puts a
   // visible kink where a real arm has a smooth curve over the ear.
   const hook = (f) => bend + (1 - bend) * f;
+  // Arms do not run straight back: they flare out to clear the head, and how
+  // much is measured from the top view. Without it the reconstruction's arms
+  // sit visibly inboard of the real ones along their whole length.
+  // Arms flare only a few degrees to clear the head. Allowing more lets a
+  // misread top view throw them outward for the whole arm's length, which on
+  // a 145mm temple adds 5cm per side to the frame's width.
+  const flare = Math.tan(Math.min(Math.max(spec.templeSplay ?? 0.03, -0.02), 0.1));
   const path = new THREE.CatmullRomCurve3(
     [
       [0, 0, 0],
-      [0.08, -0.02, -L * bend * 0.3],
-      [0.14, -0.07, -L * bend * 0.62],
-      [0.15, -0.14, -L * bend * 0.88],
-      [0.14, -0.3, -L * hook(0.3)],
-      [0.1, -0.72, -L * hook(0.62)],
-      [0.02, -1.25, -L * hook(0.87)],
+      [0.02, -0.02, -L * bend * 0.3],
+      [0.04, -0.07, -L * bend * 0.62],
+      [0.05, -0.14, -L * bend * 0.88],
+      [0.04, -0.3, -L * hook(0.3)],
+      [0.02, -0.72, -L * hook(0.62)],
+      [-0.02, -1.25, -L * hook(0.87)],
       [-0.08, -1.8, -L * 0.995],
-    ].map(([x, y, z]) => new THREE.Vector3(side * x, y, z))
+    ].map(([x, y, z]) => new THREE.Vector3(side * (x + flare * -z), y, z))
   );
 
   // Mirroring by path rather than by a negative scale: scale.x = -1 inverts
@@ -525,19 +531,28 @@ function validate(front, spec) {
   if (front.apertures.length < 2) {
     throw new Error('need-two-lenses');
   }
+  // Wide enough to cover everything from a deep shield to a slim rimless pair.
+  // The earlier lower bound rejected legitimately tall frames, and the point
+  // of this gate is to catch a photo that is not glasses at all, not to
+  // second-guess a frame's proportions.
   const aspect = spec.totalWidth / Math.max(spec.totalHeight, 1e-6);
-  if (aspect < 1.6 || aspect > 6.5) throw new Error('not-glasses-shaped');
+  spec.aspect = aspect;
+  if (aspect < 1.15 || aspect > 8) throw new Error('not-glasses-shaped');
   if (spec.lensWidth < 2.5 || spec.lensWidth > 8.5) throw new Error('implausible-lens-size');
   if (spec.bridgeGap > spec.lensWidth) throw new Error('implausible-bridge');
 }
 
-export function buildGlassesModel({ front, side = null, params: userParams = {} }) {
+export function buildGlassesModel({ front, side = null, top = null, params: userParams = {} }) {
   const params = { ...DEFAULT_PARAMS, ...userParams };
 
   // ---- Photo pixels -> centimetres, origin at the frame's centre.
-  const frameWidthPx = front.frame.maxX - front.frame.minX + 1;
+  // Scale from the *front's* width, with the arms trimmed off: that is the
+  // measurement printed on a frame and the one the user takes with a ruler.
+  const frameWidthPx = front.frontWidthPx ?? front.frame.maxX - front.frame.minX + 1;
   const s = params.frameWidthMM / 10 / frameWidthPx;
-  const ax = (front.frame.minX + front.frame.maxX) / 2;
+  const ax = front.frontMinX != null
+    ? front.frontMinX + frameWidthPx / 2
+    : (front.frame.minX + front.frame.maxX) / 2;
   const ay = (front.frame.minY + front.frame.maxY) / 2;
   const toCm = (contour) => contour.map(([px, py]) => ({ x: (px - ax) * s, y: (ay - py) * s }));
 
@@ -559,29 +574,83 @@ export function buildGlassesModel({ front, side = null, params: userParams = {} 
     centres.reduce((acc, c) => acc + c.y, 0) / centres.length;
 
   const spec = measureSpec(aperture, outer, lensCenterX, lensCenterY);
+
+  // Prefer the rim measured against the silhouette over the one inferred from
+  // the outer bounds; the inferred one is only a fallback for a photo whose
+  // apertures could not be outlined.
+  if (front.rimPx) {
+    if (front.rimPx.side) spec.rim = front.rimPx.side * s;
+    if (front.rimPx.top) spec.rimTop = front.rimPx.top * s;
+    if (front.rimPx.bottom) spec.rimBottom = front.rimPx.bottom * s;
+  }
   validate(front, spec);
 
   // Measure at full resolution, build at mesh resolution.
   const meshOuter = resampleClosed(outer, OUTER_SEGMENTS);
   const meshAperture = resampleClosed(aperture, APERTURE_SEGMENTS);
 
+  // ---- What the top view measures directly, instead of it being guessed.
+  // Front-to-back thickness, the face-form curve and the arm's reach are all
+  // invisible head-on; without this view they came from a rule of thumb on the
+  // rim's width, so a frame could match its photo exactly and still be the
+  // wrong shape as soon as it was turned.
+  let measuredDepth = null;
+  let measuredLength = null;
+  if (top && (top.frontWidthPx ?? top.widthPx) > 0) {
+    // Scale by the front's span in this view, not the object's: the arms
+    // usually splay wider than the front, and the width the user entered is
+    // the front's.
+    const s2 = params.frameWidthMM / 10 / (top.frontWidthPx ?? top.widthPx);
+    measuredDepth = top.frontDepthPx * s2;
+    measuredLength = Math.max(top.totalDepthPx - top.frontDepthPx, 1) * s2;
+
+    // Sanity-check against what a frame can physically be. On a strongly
+    // wrapped pair the front's ends curve back nearly as far as the arms
+    // reach, so "front" and "arm" stop being separable by depth alone and the
+    // arm can measure a few millimetres long. An arm is never shorter than
+    // roughly half the frame's width, and a front is never a third of the
+    // whole depth — outside that, the entered value is the better guess.
+    const widthCM = params.frameWidthMM / 10;
+    if (measuredLength < widthCM * 0.35 || measuredLength > widthCM * 2.2) {
+      measuredLength = null;
+    }
+    if (measuredDepth > (top.totalDepthPx * s2) / 3 || measuredDepth < 0.1) {
+      measuredDepth = null;
+    }
+    // y = k_px * x_px^2 in pixels becomes y_cm = (k_px / s2) * x_cm^2.
+    params.wrapK = Math.min(Math.max(top.wrapKPx / s2, 0), 0.05);
+    if (Number.isFinite(top.splayRad)) spec.templeSplay = top.splayRad;
+  }
+
   // ---- Parts of the spec that come from the side photo or sensible defaults.
-  const lengthCM = params.templeLengthMM / 10;
+  const lengthCM = measuredLength ?? params.templeLengthMM / 10;
   let profile = null;
-  if (side) {
-    profile = measureTempleProfile(side.mask, side.width, side.height, side.comp);
-    const sideScale = lengthCM / profile.lengthPx;
-    // Height measured *at the hinge station*. The side photo's overall bounding
-    // box is much taller than the arm, because it includes the ear hook's drop.
-    spec.templeHeight = Math.min(Math.max(profile.baseHeightPx * sideScale, 0.35), 2.4);
+  if (side && side.stations) {
+    // Whole-frame side view: the arm has already been separated from the front
+    // by its profile, so its taper, bend and height come straight out, and the
+    // front's lean comes with them.
+    profile = { stations: side.stations, bendAt: side.bendAt };
+    const sideScale = lengthCM / Math.max(side.armLengthPx, 1);
+    spec.templeHeight = Math.min(Math.max(side.armBaseHeightPx * sideScale, 0.35), 2.4);
+    if (Number.isFinite(side.pantoscopic)) {
+      params.pantoscopic = Math.min(Math.max(side.pantoscopic, -0.02), 0.22);
+    }
+    // The side view also sees the front's thickness; use it when there is no
+    // top view to measure it more directly.
+    if (measuredDepth == null && side.frontDepthPx > 0) {
+      measuredDepth = side.frontDepthPx * sideScale;
+    }
   } else {
     spec.templeHeight = Math.min(Math.max(spec.rimTop * 1.5, 0.5), 1.6);
   }
   spec.templeThickness = Math.min(Math.max(spec.rim * 0.75, 0.16), 0.7);
 
-  const depth = params.depthCM ?? Math.min(Math.max(spec.rim * 0.9, 0.18), 0.85);
+  const depth =
+    params.depthCM ?? measuredDepth ?? Math.min(Math.max(spec.rim * 0.9, 0.18), 0.85);
   const lensOpacity = params.lensOpacity ?? suggestLensOpacity(front);
   spec.depth = depth;
+  spec.templeLength = lengthCM;
+  spec.measuredFromTop = !!top;
 
   // ---- Build.
   const materials = buildMaterials(front, spec, lensOpacity);

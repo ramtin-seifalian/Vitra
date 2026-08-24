@@ -27,6 +27,28 @@ recommended) and the page reconstructs the frame in 3D, shows it in an
 orbitable studio viewer, and can hand it straight to the try-on or export it
 as a `.glb`.
 
+### Which photos, and why three
+
+One straight-on photo cannot determine a frame. Its thickness front-to-back,
+the curve it wraps around the face, and the length of its arms are all
+invisible head-on — they used to be guessed from the rim's width, which is why
+a model could match its photo exactly and still be wrong the moment it was
+turned. Three orthogonal views each measure something none of the others can:
+
+| Photo | What is measured from it |
+|---|---|
+| **Front** (required) | outer silhouette, both lens apertures, rim thickness, frame and lens colour |
+| **Side** (recommended) | the arm's taper, where it bends over the ear, and the front's pantoscopic lean |
+| **Top** (recommended) | **front thickness, face-form curvature, and true temple length** |
+
+A single three-quarter photo is intuitive but is the *worst* input for
+automated measurement: everything in it is foreshortened by an unknown
+perspective, so nothing can be measured without first solving for camera pose.
+Orthogonal views need no such solving — each one is measured directly, and the
+top view even scales itself, because its widest span is the frame width
+already entered. The page states plainly which numbers were measured and which
+were assumed, so a missing view is never silently guessed at.
+
 ### Photo requirements
 
 Accuracy is bounded by the photo, so the page states these up front:
@@ -39,8 +61,9 @@ Accuracy is bounded by the photo, so the page states these up front:
   tilted frame.
 - **Even light**, no hard shadow under the frame and no blown-out specular
   glare on the lenses.
-- **Side photo:** one temple only, hinge end preferably on the left (the page
-  detects and mirrors it automatically if not).
+- **Side photo:** the whole pair from directly side-on with the temples open.
+  Either way round — the page finds the front by its profile.
+- **Top photo:** the whole pair lying open, camera directly overhead.
 - Enter the frame's real **total width in mm** (printed on the temple, e.g.
   `52□18-145`) so the model comes out at true scale, in the same metric face
   space the tracker uses.
@@ -109,6 +132,27 @@ The reconstruction refuses rather than guesses: if two lens apertures aren't
 found, or the measured proportions aren't those of a pair of glasses, it
 reports what's wrong with the photo instead of producing a plausible-looking
 wrong model.
+
+### Measured accuracy
+
+Correctness here is measured, not eyeballed. `scripts`-free but reproducible:
+real 3D frames (the Khronos sunglasses asset and the repo's own parametric
+frames) are rendered as orthographic product photos, pushed through the
+reconstruction, and the result is re-rendered from the same viewpoints and
+compared by silhouette IoU, with dimensions checked against the source's known
+geometry.
+
+On the acetate frame, whose exact spec is known: lens width **51.7mm vs 52.0**,
+bridge **18.6 vs 18.2**, lens height **39.4 vs 40.5** — inside 3%. Silhouette
+overlap is around **0.81 front / 0.68 side / 0.73 top**.
+
+Thin wire frames are weaker (front ~0.67–0.84, top as low as 0.21): a silver
+rim on a white backdrop is barely separable by colour, mirrored lenses break
+into fragments under their own highlights, and on a strongly wrapped frame the
+front's ends curve back nearly as far as the arms reach, so "front" and "arm"
+stop being separable by depth alone. Where the top view's numbers fail that
+physical sanity check, the entered temple length is used instead of a wrong
+measurement.
 
 The model is authored in face-space centimetres with its origin at the
 front's optical centre, which is exactly what the try-on placement expects —

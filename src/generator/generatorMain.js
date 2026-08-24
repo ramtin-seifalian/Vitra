@@ -2,7 +2,7 @@ import '../style.css';
 import './generator.css';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
 import { loadPhoto } from './segmentation.js';
-import { analyzeFrontPhoto, analyzeTemplePhoto } from './photoAnalysis.js';
+import { analyzeFrontPhoto, analyzeSidePhoto, analyzeTopPhoto } from './photoAnalysis.js';
 import { buildGlassesModel, disposeModel, suggestLensOpacity } from './photoGlassesBuilder.js';
 import { GeneratorViewer } from './generatorViewer.js';
 import { saveCustomModel } from './customModelStore.js';
@@ -11,7 +11,9 @@ const el = (id) => document.getElementById(id);
 const frontInput = el('front-input');
 const sideInput = el('side-input');
 const frontPreview = el('front-preview');
+const topInput = el('top-input');
 const sidePreview = el('side-preview');
+const topPreview = el('top-preview');
 const buildBtn = el('build-btn');
 const exportBtn = el('export-btn');
 const tryOnBtn = el('tryon-btn');
@@ -34,8 +36,10 @@ el('auto-rotate').addEventListener('change', (e) => viewer.setAutoRotate(e.targe
 const state = {
   frontPhoto: null,
   sidePhoto: null,
+  topPhoto: null,
   frontAnalysis: null,
   sideAnalysis: null,
+  topAnalysis: null,
   model: null,
   lensOpacityAuto: true,
   depthAuto: true,
@@ -91,6 +95,7 @@ function drawDetectionPreview(canvas, photo, contours) {
 }
 
 const LENS_SOURCE_FA = {
+  structure: 'ساختاری — دو ناحیهٔ قرینه که فریم دورشان را گرفته',
   holes: 'عدسی شفاف — حفرهٔ واقعی فریم تشخیص داده شد',
   color: 'از تفاوت رنگ عدسی با فریم',
   inset: 'هندسی (فاصله از دور فریم) — با اسلایدر «ضخامت دور فریم» تنظیم کنید',
@@ -115,9 +120,11 @@ function renderReport() {
       (LENS_SOURCE_FA[a.lensSource] ?? 'تشخیص نشد (فریم بدون عدسی ساخته می‌شود)') +
       (a.lensTint ? ' — رنگ عدسی: ' + swatch(a.lensTint) : ''),
     state.sideAnalysis
-      ? '✔ دسته از روی پروفیل عکس بغل اندازه‌گیری شد' +
-        (state.sideAnalysis.flipped ? ' (عکس خودکار آینه شد)' : '')
-      : 'ℹ عکس بغل داده نشده — دسته با نسبت‌های استاندارد ساخته شد',
+      ? '✔ از عکس پهلو: باریک‌شدن دسته، محل خم روی گوش و زاویهٔ فریم'
+      : 'ℹ عکس پهلو داده نشده — شکل دسته با نسبت‌های استاندارد ساخته شد',
+    state.topAnalysis
+      ? '✔ از عکس بالا: ضخامت فریم، انحنای دور صورت و طول دسته'
+      : 'ℹ عکس بالا داده نشده — <b>ضخامت فریم، انحنا و طول دسته حدس زده شده‌اند</b>',
   ];
 
   // The measured spec is the actual output of the reconstruction: these are
@@ -127,7 +134,8 @@ function renderReport() {
       '<b>مشخصات اندازه‌گیری‌شده</b>',
       'فرم عدسی: <b>' + spec.shape + '</b>',
       'کد سایز: <b>' + mm(spec.lensWidth) + '□' + mm(spec.bridgeGap) + '-' +
-        params.templeLength.value + '</b>',
+        mm(spec.templeLength ?? Number(params.templeLength.value) / 10) + '</b>' +
+        (spec.measuredFromTop ? ' <span class="ok">(طول دسته اندازه‌گیری شد)</span>' : ''),
       'ارتفاع عدسی: ' + mm(spec.lensHeight) + 'mm · ضخامت دور فریم: ' + mm(spec.rim) +
         'mm · ضخامت ورق: ' + mm(spec.depth) + 'mm',
       'جنس تشخیص‌داده‌شده: ' + (spec.rim < 0.28 ? 'فلزی (وایر)' : 'کائوچو/استات')
@@ -157,19 +165,53 @@ function analyzeFront() {
   el('front-hint').textContent = 'برای تعویض عکس کلیک کنید';
 }
 
+/** Outline of a mask, for showing the user what was understood. */
+function maskOutline(mask, w, h, step = 3) {
+  const pts = [];
+  for (let y = 0; y < h; y += step) {
+    let lo = -1;
+    let hi = -1;
+    for (let x = 0; x < w; x++) {
+      if (mask[y * w + x]) {
+        if (lo < 0) lo = x;
+        hi = x;
+      }
+    }
+    if (lo >= 0) pts.push([lo, y], [hi, y]);
+  }
+  return pts;
+}
+
 function analyzeSide() {
   if (!state.sidePhoto) {
     state.sideAnalysis = null;
     return;
   }
-  state.sideAnalysis = analyzeTemplePhoto(state.sidePhoto, {
+  state.sideAnalysis = analyzeSidePhoto(state.sidePhoto, {
     tolerance: Number(params.tolerance.value),
   });
-  drawDetectionPreview(sidePreview, state.sideAnalysis.photo, [
-    { points: state.sideAnalysis.contour, color: '#ffb347' },
+  const a = state.sideAnalysis;
+  drawDetectionPreview(sidePreview, state.sidePhoto, [
+    { points: maskOutline(a.mask, a.width, a.height), color: '#ffb347' },
   ]);
   el('side-card').classList.add('has-photo');
   el('side-hint').textContent = 'برای تعویض عکس کلیک کنید';
+}
+
+function analyzeTop() {
+  if (!state.topPhoto) {
+    state.topAnalysis = null;
+    return;
+  }
+  state.topAnalysis = analyzeTopPhoto(state.topPhoto, {
+    tolerance: Number(params.tolerance.value),
+  });
+  const a = state.topAnalysis;
+  drawDetectionPreview(topPreview, state.topPhoto, [
+    { points: maskOutline(a.mask, a.width, a.height), color: '#5cc8ff' },
+  ]);
+  el('top-card').classList.add('has-photo');
+  el('top-hint').textContent = 'برای تعویض عکس کلیک کنید';
 }
 
 function rebuildModel() {
@@ -181,6 +223,7 @@ function rebuildModel() {
   state.model = buildGlassesModel({
     front: state.frontAnalysis,
     side: state.sideAnalysis,
+    top: state.topAnalysis,
     params: {
       frameWidthMM: Number(params.frameWidth.value) || 140,
       templeLengthMM: Number(params.templeLength.value) || 145,
@@ -200,13 +243,14 @@ function rebuildModel() {
 }
 
 /** Run (parts of) the pipeline off the click handler so the UI can paint first. */
-function run({ front = false, side = false } = {}) {
+function run({ front = false, side = false, top = false } = {}) {
   showStatus('در حال پردازش…');
   buildBtn.disabled = !state.frontPhoto;
   setTimeout(() => {
     try {
       if (front) analyzeFront();
       if (side) analyzeSide();
+      if (top) analyzeTop();
       rebuildModel();
       showStatus(null);
     } catch (err) {
@@ -226,11 +270,16 @@ async function onPhotoPicked(input, key) {
     showStatus(faError(err), true);
     return;
   }
-  run({ front: key === 'frontPhoto', side: key === 'sidePhoto' });
+  run({
+    front: key === 'frontPhoto',
+    side: key === 'sidePhoto',
+    top: key === 'topPhoto',
+  });
 }
 
 frontInput.addEventListener('change', () => onPhotoPicked(frontInput, 'frontPhoto'));
 sideInput.addEventListener('change', () => onPhotoPicked(sideInput, 'sidePhoto'));
+topInput.addEventListener('change', () => onPhotoPicked(topInput, 'topPhoto'));
 
 buildBtn.addEventListener('click', () => run({ front: true, side: true }));
 
@@ -253,7 +302,9 @@ params.lensOpacity.addEventListener('input', () => {
 });
 params.tolerance.addEventListener('input', () => {
   el('tolerance-val').textContent = params.tolerance.value;
-  if (state.frontPhoto) debounced(() => run({ front: true, side: !!state.sidePhoto }));
+  if (state.frontPhoto) {
+    debounced(() => run({ front: true, side: !!state.sidePhoto, top: !!state.topPhoto }));
+  }
 });
 params.rim.addEventListener('input', () => {
   el('rim-val').textContent = (Number(params.rim.value) * 100).toFixed(1) + '٪';
