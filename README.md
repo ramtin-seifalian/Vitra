@@ -19,6 +19,34 @@ real time.
   Try On button on the single product page. See **[ROADMAP.md](ROADMAP.md)**
   for the full build plan.
 
+## Wearing your own 3D model
+
+The try-on page takes a `.glb` directly — "یا فایل GLB خودتان را آپلود کنید",
+under the Try On button. It is stored locally (IndexedDB), survives a reload,
+and appears as the same "عینک من" style chip a generated frame does.
+
+An uploaded model is **auto-fitted** first, because nothing in a glTF says
+which way a pair of glasses faces. It may be in metres or millimetres, modelled
+Z-up, facing away from the camera, and centred wherever its author left the
+origin; dropped in untouched it lands off-screen, wrong-sized and backwards.
+`glasses/fitUploadedFrame.js` recovers the frame from its own geometry, using
+facts true of every pair: it is far wider and deeper than it is tall, so the
+shortest axis is up; it is mirror-symmetric left to right but a slab at one end
+with two thin arms trailing off the other, so the *skewed* axis is depth and the
+balanced one width; the wide end is the front; and the arms hook down behind the
+ear, so the far end sits lower. The model is then scaled to a real frame width
+and re-origined on the front, exactly as a generated frame is authored.
+
+Verified against a real product model presented five ways — as authored, Z-up,
+facing away, upside-down, and at 1000× scale — all of which converge on the
+same normalised result. The fit sliders under "تنظیم دقیق" correct anything the
+model's own proportions still make wrong.
+
+Only `.glb` is accepted: a `.gltf` references external files that a single
+upload cannot carry. A file that will not parse is rejected at upload with a
+reason, rather than becoming a broken style chip. There is one custom slot, so
+uploading replaces a generated frame and vice versa.
+
 ## Building a frame from photos (`generator.html`)
 
 Reached from the link under the Try On button. Upload a **front** photo of a

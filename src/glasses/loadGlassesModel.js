@@ -3,6 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { createGlasses } from './createGlasses.js';
 import { createAcetateFrame } from './createAcetateFrame.js';
 import { loadCustomModel } from '../generator/customModelStore.js';
+import { fitUploadedFrame } from './fitUploadedFrame.js';
 
 // Parametric reproductions of real products, built from their optical spec
 // (lens width x height, bridge, temple length) rather than loaded as assets.
@@ -61,9 +62,19 @@ let customPromise = null;
 
 /** Parse the GLB held in IndexedDB once; callers get clones of the result. */
 function loadCustomScene() {
-  customPromise ??= loadCustomModel().then((record) => {
+  customPromise ??= loadCustomModel().then(async (record) => {
     if (!record) throw new Error('no-custom-model');
-    return loader.parseAsync(record.glb, '');
+    const gltf = await loader.parseAsync(record.glb, '');
+    const meta = record.meta ?? {};
+
+    // A frame this app generated is already authored in face space. One the
+    // user uploaded is in whatever units, orientation and origin its author
+    // chose, so it has to be measured and re-framed before it can be worn.
+    if (meta.source === 'upload') {
+      const { group } = fitUploadedFrame(gltf.scene, meta.frameWidthMM ?? 140);
+      return group;
+    }
+    return gltf.scene;
   });
   return customPromise;
 }
@@ -75,10 +86,10 @@ export function invalidateCustomModel() {
 
 /** Build the user's generated frame, ready to drop onto the face anchor. */
 async function loadCustomGlasses() {
-  const gltf = await loadCustomScene();
+  const scene = await loadCustomScene();
   const group = new THREE.Group();
   group.name = 'glasses-custom';
-  const instance = gltf.scene.clone(true);
+  const instance = scene.clone(true);
   instance.position.fromArray(CUSTOM_FIT.position);
   group.add(instance);
   group.userData.style = CUSTOM_STYLE;
