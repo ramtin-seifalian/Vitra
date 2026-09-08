@@ -42,7 +42,12 @@
       <p class="gen-cta">
         عینک خودتان را دارید؟
         <a href="generator.html">از روی عکس، مدل سه‌بعدی‌اش را بسازید ←</a>
+        <label class="upload-glb">
+          <input type="file" id="glb-input" accept=".glb,model/gltf-binary" hidden />
+          یا فایل GLB خودتان را آپلود کنید
+        </label>
       </p>
+      <div id="glb-status" class="glb-status" hidden></div>
 
       <details id="fit-panel" class="fit-panel" hidden>
         <summary>تنظیم دقیق (Fit calibration)</summary>

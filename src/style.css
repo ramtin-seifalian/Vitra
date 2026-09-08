@@ -228,3 +228,32 @@ body {
   border-color: var(--accent);
   color: var(--text);
 }
+
+/* Upload-your-own-model control, beside the generator link. */
+.upload-glb {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent-2);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.upload-glb:hover {
+  opacity: 0.85;
+}
+
+.glb-status {
+  margin: 0 12px 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.glb-status.error {
+  background: rgba(226, 74, 74, 0.14);
+  color: #ffb3b3;
+}

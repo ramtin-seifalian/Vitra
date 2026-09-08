@@ -1,7 +1,12 @@
 import './style.css';
 import { IdlePreview } from './scene/idlePreview.js';
 import { ArTryOn } from './scene/arTryOn.js';
-import { hasCustomModel, hasCustomModelFlag } from './generator/customModelStore.js';
+import {
+  hasCustomModel,
+  hasCustomModelFlag,
+  saveCustomModel,
+} from './generator/customModelStore.js';
+import { invalidateCustomModel } from './glasses/loadGlassesModel.js';
 
 const idleCanvas = document.getElementById('idle-canvas');
 const arLayer = document.getElementById('ar-layer');
@@ -17,6 +22,8 @@ const fitZ = document.getElementById('fit-z');
 const fitScale = document.getElementById('fit-scale');
 
 const customStyleBtn = document.getElementById('custom-style-btn');
+const glbInput = document.getElementById('glb-input');
+const glbStatus = document.getElementById('glb-status');
 
 let currentStyle = 'square-oversized';
 let arSession = null;
@@ -42,6 +49,58 @@ function offerCustomStyle(exists) {
 
 offerCustomStyle(hasCustomModelFlag());
 hasCustomModel().then(offerCustomStyle);
+
+// ---- Wearing a model the user supplies themselves --------------------------
+
+const MAX_GLB_BYTES = 60 * 1024 * 1024;
+
+function showGlbStatus(message, isError = false) {
+  glbStatus.hidden = !message;
+  glbStatus.textContent = message ?? '';
+  glbStatus.classList.toggle('error', isError);
+}
+
+glbInput.addEventListener('change', async () => {
+  const file = glbInput.files?.[0];
+  glbInput.value = ''; // so re-picking the same file fires again
+  if (!file) return;
+
+  if (!/\.glb$/i.test(file.name)) {
+    showGlbStatus('فقط فایل .glb پشتیبانی می‌شود. (فایل .gltf به فایل‌های جانبی نیاز دارد.)', true);
+    return;
+  }
+  if (file.size > MAX_GLB_BYTES) {
+    showGlbStatus('فایل خیلی بزرگ است (بیشتر از ۶۰ مگابایت).', true);
+    return;
+  }
+
+  showGlbStatus('در حال خواندن مدل…');
+  try {
+    const glb = await file.arrayBuffer();
+
+    // Parse and fit before storing, so a file that cannot be worn is rejected
+    // now with a clear reason rather than becoming a broken style chip.
+    const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+    const { fitUploadedFrame } = await import('./glasses/fitUploadedFrame.js');
+    const gltf = await new GLTFLoader().parseAsync(glb, '');
+    const { info } = fitUploadedFrame(gltf.scene, 140);
+
+    await saveCustomModel(glb, { source: 'upload', name: file.name, frameWidthMM: 140 });
+    invalidateCustomModel();
+    offerCustomStyle(true);
+    customStyleBtn.click();
+
+    const mm = (cm) => Math.round(cm * 10);
+    showGlbStatus(
+      `مدل «${file.name}» بارگذاری شد — تراز خودکار شد به ` +
+        `${mm(info.sizeCM.width)}×${mm(info.sizeCM.height)}×${mm(info.sizeCM.depth)} میلی‌متر. ` +
+        'اگر جای عینک روی صورت دقیق نبود، از «تنظیم دقیق» استفاده کنید.'
+    );
+  } catch (err) {
+    console.error(err);
+    showGlbStatus('این فایل GLB خوانده نشد. مطمئن شوید یک مدل سه‌بعدی سالم است.', true);
+  }
+});
 
 function showStatus(message, isError = false) {
   if (!message) {
