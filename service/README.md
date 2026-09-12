@@ -94,6 +94,34 @@ Then in the generator page, open **«ساخت با هوش مصنوعی»** and s
 
 ## Real mode — TRELLIS on a GPU
 
+### Copy-paste, in the pod's terminal
+
+```bash
+# 1. Get the code and install TRELLIS. Takes 15-30 minutes, mostly compiling.
+cd /workspace
+git clone https://github.com/ramtin-seifalian/Vitra
+cd Vitra/service
+bash setup-trellis.sh
+
+# 2. Make a token and start the service. Copy the token it prints.
+export VITRA_BACKEND=trellis
+export VITRA_API_TOKEN="$(openssl rand -hex 24)"
+export VITRA_ALLOWED_ORIGINS="https://ramtin-seifalian.github.io"
+echo "=== TOKEN: $VITRA_API_TOKEN ==="
+uvicorn app.main:app --host 0.0.0.0 --port 8099
+```
+
+Check it from a second terminal with `curl http://localhost:8099/health`, then
+paste the pod's public HTTPS URL and that token into the generator page under
+«ساخت با هوش مصنوعی».
+
+Clone into `/workspace` (or wherever the network volume is mounted) so the
+work survives a pod restart. The model weights land in the Hugging Face cache;
+set `HF_HOME=/workspace/hf` before the first run to keep those on the volume
+too, or they are re-downloaded every time the pod is recreated.
+
+### What the script does
+
 On the GPU box:
 
 ```bash
