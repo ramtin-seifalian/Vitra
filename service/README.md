@@ -16,11 +16,49 @@ Hunyuan Community License, which **excludes the EU, the UK and South Korea**;
 it is included here as a backend, but check the licence against where you
 actually trade before switching to it.
 
+## Do not buy a server for this
+
+Work out the actual workload first. A model is generated **once per product**
+and the GLB is then cached forever; the try-on itself runs in the customer's
+browser and never touches a GPU. So the GPU is needed only while adding
+products to the catalogue.
+
+At roughly 30 seconds a photo, 100 products is under an hour of GPU time.
+Rented at about $0.34/hr for an RTX 4090 that is **well under $1 for the whole
+catalogue**. A card to put in a machine costs four figures and would sit idle
+between product launches.
+
+Rent by the hour, and only reconsider if you ever find yourself generating
+continuously.
+
 ## Hardware
 
-TRELLIS wants an NVIDIA GPU with **16GB VRAM or more** (24GB is comfortable).
-Generation takes roughly 10–40 seconds per photo depending on the card. The
-weights are several gigabytes and are downloaded once on first use.
+Official TRELLIS requirements: **Linux**, **CUDA 11.8 or 12.2**, **Python 3.8+**,
+and an **NVIDIA GPU with at least 16GB of VRAM** (tested on A100 and A6000).
+An RTX 4090 (24GB) is the cheapest card that comfortably clears this.
+
+Generation takes roughly 10–40 seconds per photo. The weights are several
+gigabytes and download once on first use, so budget 10–15 minutes for the very
+first run.
+
+## Renting, step by step
+
+1. Make an account on a GPU marketplace — [RunPod](https://runpod.io) or
+   [Vast.ai](https://vast.ai). RunPod's Community Cloud and Vast.ai's
+   marketplace are the cheap tiers; the "secure"/verified tiers cost roughly
+   double for the same card.
+2. Start a pod with an **RTX 4090 (24GB)** on a **PyTorch + CUDA 12.1**
+   template. Give it **60GB+ of disk** — the weights and CUDA extensions are
+   large.
+3. Expose **port 8099** (RunPod calls this an HTTP port).
+4. Open the pod's terminal and run the setup script below.
+5. Take the pod's public URL and paste it into the generator page, with the
+   token you set.
+6. **Stop the pod when you are done.** Billing is per second of uptime, not
+   per model — an idle pod still costs money.
+
+Generate, check the result, and only then decide whether the quality justifies
+going further. That test costs a couple of dollars, not a server.
 
 ## Quick start — mock mode, no GPU
 
@@ -45,27 +83,33 @@ Then in the generator page, open **«ساخت با هوش مصنوعی»** and s
 
 ## Real mode — TRELLIS on a GPU
 
+On the GPU box:
+
 ```bash
-# 1. TRELLIS and its dependencies, per its own install instructions:
-git clone https://github.com/microsoft/TRELLIS
-cd TRELLIS && . ./setup.sh --dev --basic --xformers --flash-attn --diffoctreerast --spconv --mipgaussian --kaolin --nvdiffrast
-pip install -e .
-
-# 2. This service, in the same environment:
-cd /path/to/Vitra/service
-pip install -r requirements.txt
-pip install rembg            # background removal before generation
-
-# 3. Run it:
-VITRA_BACKEND=trellis \
-VITRA_API_TOKEN="$(openssl rand -hex 24)" \
-VITRA_ALLOWED_ORIGINS="https://your-storefront.example" \
-  uvicorn app.main:app --host 0.0.0.0 --port 8099
+git clone https://github.com/ramtin-seifalian/Vitra
+cd Vitra/service
+bash setup-trellis.sh          # installs TRELLIS, its extensions, and this service
 ```
 
-Put it behind a reverse proxy with TLS. A browser on an HTTPS page cannot call
-an HTTP endpoint, so the service needs a certificate — the try-on page already
-requires HTTPS for camera access.
+Then run it:
+
+```bash
+export VITRA_BACKEND=trellis
+export VITRA_API_TOKEN="$(openssl rand -hex 24)"   # note this down
+export VITRA_ALLOWED_ORIGINS="https://ramtin-seifalian.github.io"
+echo "token: $VITRA_API_TOKEN"
+uvicorn app.main:app --host 0.0.0.0 --port 8099
+```
+
+The TRELLIS install compiles several CUDA extensions and is the fiddly part.
+Run it interactively the first time so a failing step is visible; the script
+stops at the first error rather than carrying on with a half-built
+environment.
+
+**A browser on an HTTPS page cannot call a plain HTTP endpoint.** The
+storefront is served over HTTPS, so the service needs TLS too. On RunPod the
+proxied pod URL is already HTTPS, which is the simplest route; on your own box,
+put it behind nginx or Caddy with a certificate.
 
 ## Configuration
 
