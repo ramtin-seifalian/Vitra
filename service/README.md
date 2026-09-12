@@ -47,9 +47,20 @@ first run.
    [Vast.ai](https://vast.ai). RunPod's Community Cloud and Vast.ai's
    marketplace are the cheap tiers; the "secure"/verified tiers cost roughly
    double for the same card.
-2. Start a pod with an **RTX 4090 (24GB)** on a **PyTorch + CUDA 12.1**
-   template. Give it **60GB+ of disk** — the weights and CUDA extensions are
-   large.
+2. Start a pod with an **RTX 4090 (24GB)**. Give it **60GB+ of disk** — the
+   weights and CUDA extensions are large.
+
+   **Watch the CUDA version.** TRELLIS is tested on CUDA 11.8 and 12.2, and
+   current RunPod PyTorch templates offer 12.8 and newer. The Python side is
+   fine on those; the risk is the half-dozen CUDA extensions the setup script
+   compiles (flash-attn, spconv, nvdiffrast, kaolin, diffoctreerast), which are
+   the part that breaks on an untested toolkit. Prefer a template offering
+   **CUDA 12.1–12.4** where one is available. If a build fails, that is the
+   first thing to change — not the script.
+
+   Note also that a **network volume keeps billing after the pod is stopped**
+   (a few dollars a month for 80GB). It is worth keeping between sessions so
+   the weights do not download again; delete it when the project is done.
 3. Expose **port 8099** (RunPod calls this an HTTP port).
 4. Open the pod's terminal and run the setup script below.
 5. Take the pod's public URL and paste it into the generator page, with the
