@@ -257,3 +257,16 @@ body {
   background: rgba(226, 74, 74, 0.14);
   color: #ffb3b3;
 }
+
+/* Toggle for auto-detecting lenses on an uploaded model. */
+.glb-refine {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.glb-refine .hint {
+  opacity: 0.7;
+}

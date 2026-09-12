@@ -57,6 +57,15 @@ export const MODEL_STYLES = Object.keys(GLASSES_MODELS);
 // lens centres onto the pupil line (y), and the back of the front slab just
 // clear of the bridge (z) — the same numbers the other registry entries carry.
 export const CUSTOM_STYLE = 'custom';
+
+// What the last lens refinement did, for the page to report. Whether the
+// lenses were actually found is the one thing a user needs to see after
+// loading a generated model, and it is only knowable here.
+let lastRefinement = null;
+
+export function getLastRefinement() {
+  return lastRefinement;
+}
 const CUSTOM_FIT = { position: [0, 2.5, 5.45] };
 
 let customPromise = null;
@@ -77,7 +86,7 @@ function loadCustomScene() {
       // An image-to-3D model hands back solid lenses, because it has no idea
       // it is looking at eyewear. Worn on a face that reads as a blindfold, so
       // the glass is found and made transparent before the frame is ever worn.
-      if (meta.generated) {
+      if (meta.generated || meta.refine) {
         const tint = meta.lensTint
           ? new THREE.Color().setRGB(
               meta.lensTint[0] / 255,
@@ -90,6 +99,7 @@ function loadCustomScene() {
           lensTint: tint,
           lensOpacity: meta.lensOpacity ?? 0.55,
         });
+        lastRefinement = info;
         console.info('[glasses] lens refinement:', info);
       }
       return group;
