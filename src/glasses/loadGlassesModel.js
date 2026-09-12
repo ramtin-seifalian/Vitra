@@ -4,6 +4,7 @@ import { createGlasses } from './createGlasses.js';
 import { createAcetateFrame } from './createAcetateFrame.js';
 import { loadCustomModel } from '../generator/customModelStore.js';
 import { fitUploadedFrame } from './fitUploadedFrame.js';
+import { refineGeneratedFrame } from './refineGeneratedFrame.js';
 
 // Parametric reproductions of real products, built from their optical spec
 // (lens width x height, bridge, temple length) rather than loaded as assets.
@@ -72,6 +73,25 @@ function loadCustomScene() {
     // chose, so it has to be measured and re-framed before it can be worn.
     if (meta.source === 'upload') {
       const { group } = fitUploadedFrame(gltf.scene, meta.frameWidthMM ?? 140);
+
+      // An image-to-3D model hands back solid lenses, because it has no idea
+      // it is looking at eyewear. Worn on a face that reads as a blindfold, so
+      // the glass is found and made transparent before the frame is ever worn.
+      if (meta.generated) {
+        const tint = meta.lensTint
+          ? new THREE.Color().setRGB(
+              meta.lensTint[0] / 255,
+              meta.lensTint[1] / 255,
+              meta.lensTint[2] / 255,
+              THREE.SRGBColorSpace
+            )
+          : undefined;
+        const { info } = refineGeneratedFrame(group, {
+          lensTint: tint,
+          lensOpacity: meta.lensOpacity ?? 0.55,
+        });
+        console.info('[glasses] lens refinement:', info);
+      }
       return group;
     }
     return gltf.scene;

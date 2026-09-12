@@ -71,6 +71,25 @@
             </label>
           </div>
 
+          <details class="ai-panel" id="ai-panel">
+            <summary>ساخت با هوش مصنوعی (سرور GPU خودتان)</summary>
+            <p class="ai-note">
+              مدل TRELLIS روی سرور خودتان اجرا می‌شود؛ عکس از زیرساخت شما بیرون نمی‌رود.
+              راه‌اندازی سرور در <code>service/README.md</code> توضیح داده شده.
+            </p>
+            <label>آدرس سرویس
+              <input type="url" id="svc-url" placeholder="https://gpu.example.com" />
+            </label>
+            <label>توکن (اختیاری)
+              <input type="password" id="svc-token" placeholder="VITRA_API_TOKEN" />
+            </label>
+            <div class="ai-actions">
+              <button id="svc-test" class="secondary-btn" type="button">تست اتصال</button>
+              <button id="ai-build" class="primary-btn" type="button" disabled>ساخت از عکس روبه‌رو</button>
+            </div>
+            <div id="svc-status" class="ai-status" hidden></div>
+          </details>
+
           <div class="gen-actions">
             <button id="build-btn" class="primary-btn" disabled>ساخت مدل سه‌بعدی</button>
             <button id="tryon-btn" class="secondary-btn" disabled>امتحان روی صورت</button>

@@ -19,6 +19,43 @@ real time.
   Try On button on the single product page. See **[ROADMAP.md](ROADMAP.md)**
   for the full build plan.
 
+## The two ways a frame gets made
+
+There are two paths to a 3D frame, and they have genuinely different ceilings.
+
+**Measured (offline, in the browser).** The photo analysis measures the frame
+and builds it from a spec — see below. It is free, private and instant, and it
+produces a correctly-built pair of glasses. What it cannot do is reproduce
+anything a silhouette does not carry: a printed logo, the text on a temple,
+tortoiseshell patterning. Those are surface detail, and classical geometry has
+no way to invent them.
+
+**Generated (an image-to-3D model on a GPU you own).** One photo goes to a
+service you run, and a textured mesh comes back with the logos and the temple
+text baked into it. This is the only path that reaches "looks like the actual
+product". Setup and hardware are in **[service/README.md](service/README.md)**.
+
+The generated path needs glasses-specific finishing, because an image-to-3D
+model does not know what it is looking at:
+
+| Step | Where |
+|---|---|
+| photo → textured mesh | `service/` (TRELLIS on your GPU) |
+| recover orientation, units, origin | `src/glasses/fitUploadedFrame.js` |
+| **find the lenses and make them glass** | `src/glasses/refineGeneratedFrame.js` |
+| place on the face, wear | existing try-on |
+
+That middle step matters more than it sounds. A generated frame comes back with
+**solid lenses** — worn on a face it reads as a blindfold, and no amount of
+texture quality fixes it, because the problem is semantic: some of those
+triangles are glass and the model has no idea which. The fix reuses the
+aperture detector built for the measured path: the mesh is rendered straight-on
+and that render is analysed exactly like a product photo. Because the render is
+made locally, the camera is known, so every aperture pixel maps back to model
+coordinates with no registration guesswork. Triangles inside an aperture,
+facing the viewer, and within the front's depth become transparent glass; the
+frame keeps the generated texture, logos and all.
+
 ## Wearing your own 3D model
 
 The try-on page takes a `.glb` directly — "یا فایل GLB خودتان را آپلود کنید",

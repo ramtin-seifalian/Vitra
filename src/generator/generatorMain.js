@@ -6,6 +6,12 @@ import { analyzeFrontPhoto, analyzeSidePhoto, analyzeTopPhoto } from './photoAna
 import { buildGlassesModel, disposeModel, suggestLensOpacity } from './photoGlassesBuilder.js';
 import { GeneratorViewer } from './generatorViewer.js';
 import { saveCustomModel } from './customModelStore.js';
+import {
+  generateFromPhoto,
+  getServiceConfig,
+  probeService,
+  setServiceConfig,
+} from './generateProvider.js';
 
 const el = (id) => document.getElementById(id);
 const frontInput = el('front-input');
@@ -17,6 +23,11 @@ const topPreview = el('top-preview');
 const buildBtn = el('build-btn');
 const exportBtn = el('export-btn');
 const tryOnBtn = el('tryon-btn');
+const svcUrl = el('svc-url');
+const svcToken = el('svc-token');
+const svcTest = el('svc-test');
+const aiBuild = el('ai-build');
+const svcStatus = el('svc-status');
 const statusBox = el('gen-status');
 const reportBox = el('gen-report');
 const rimRow = el('rim-row');
@@ -354,6 +365,90 @@ tryOnBtn.addEventListener('click', async () => {
     console.error(err);
     showStatus('ذخیرهٔ مدل ناموفق بود. مرورگر ممکن است حالت ناشناس باشد.', true);
     tryOnBtn.disabled = false;
+  }
+});
+
+// ---- AI generation on the operator's own GPU service ----------------------
+
+function showSvcStatus(message, isError = false) {
+  svcStatus.hidden = !message;
+  svcStatus.innerHTML = message ?? '';
+  svcStatus.classList.toggle('error', isError);
+}
+
+{
+  const cfg = getServiceConfig();
+  svcUrl.value = cfg.url;
+  svcToken.value = cfg.token;
+  aiBuild.disabled = !cfg.url;
+}
+
+const persistService = () => {
+  setServiceConfig({ url: svcUrl.value, token: svcToken.value });
+  aiBuild.disabled = !svcUrl.value.trim();
+};
+svcUrl.addEventListener('change', persistService);
+svcToken.addEventListener('change', persistService);
+
+svcTest.addEventListener('click', async () => {
+  persistService();
+  showSvcStatus('در حال بررسی…');
+  try {
+    const health = await probeService();
+    showSvcStatus(
+      'سرویس در دسترس است — موتور: <b>' + (health.backend ?? '?') + '</b>' +
+        (health.backend === 'mock' ? ' (حالت تست، مدل واقعی اجرا نمی‌شود)' : '')
+    );
+  } catch (err) {
+    showSvcStatus('اتصال برقرار نشد: ' + (err?.message ?? err), true);
+  }
+});
+
+/** The front photo, as a PNG blob to post to the service. */
+function frontPhotoBlob() {
+  return new Promise((resolve, reject) => {
+    if (!state.frontPhoto) {
+      reject(new Error('no-front-photo'));
+      return;
+    }
+    state.frontPhoto.canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('encode-failed'))),
+      'image/png'
+    );
+  });
+}
+
+aiBuild.addEventListener('click', async () => {
+  if (!state.frontPhoto) {
+    showSvcStatus('اول عکس روبه‌رو را انتخاب کنید.', true);
+    return;
+  }
+  persistService();
+  aiBuild.disabled = true;
+  showSvcStatus('در حال ساخت روی سرور… (چند ده ثانیه طول می‌کشد)');
+  try {
+    const blob = await frontPhotoBlob();
+    const { glb, seconds } = await generateFromPhoto(blob);
+
+    // Stored exactly like an uploaded model, so it goes through the same
+    // auto-orient, auto-scale and lens-refinement path on its way to the face.
+    await saveCustomModel(glb, {
+      source: 'upload',
+      generated: true,
+      name: 'ai-' + Date.now() + '.glb',
+      frameWidthMM: Number(params.frameWidth.value) || 140,
+      lensTint: state.frontAnalysis?.lensTint ?? null,
+      lensOpacity: Number(params.lensOpacity.value),
+    });
+    showSvcStatus(
+      'مدل ساخته شد' + (seconds ? ` (${seconds} ثانیه)` : '') +
+        ' — <a href="index.html?style=custom">روی صورت امتحانش کنید ←</a>'
+    );
+  } catch (err) {
+    console.error(err);
+    showSvcStatus('ساخت ناموفق بود: ' + (err?.message ?? err), true);
+  } finally {
+    aiBuild.disabled = !svcUrl.value.trim();
   }
 });
 

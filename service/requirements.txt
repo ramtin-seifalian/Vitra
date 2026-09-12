@@ -1,0 +1,11 @@
+# Service itself. The model stack is installed separately per backend, so a
+# mock-mode deployment needs nothing but these.
+fastapi>=0.111
+uvicorn[standard]>=0.30
+pillow>=10.3
+python-multipart>=0.0.9
+
+# Background removal for the real backends (optional in mock mode).
+# rembg>=2.0.56
+
+# TRELLIS and Hunyuan3D are installed from their own repositories; see README.
