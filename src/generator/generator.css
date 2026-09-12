@@ -179,3 +179,71 @@
   user-select: none;
 }
 .rotate-toggle input { accent-color: var(--accent); vertical-align: -2px; }
+
+/* AI generation panel: service settings and the build action. */
+.ai-panel {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(124, 92, 255, 0.06);
+}
+
+.ai-panel > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.ai-note {
+  margin: 8px 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
+.ai-note code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.ai-panel label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.ai-panel input {
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  font-size: 13px;
+  direction: ltr;
+  text-align: left;
+}
+
+.ai-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ai-status {
+  margin-top: 9px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ai-status.error {
+  background: rgba(226, 74, 74, 0.14);
+  color: #ffb3b3;
+}
